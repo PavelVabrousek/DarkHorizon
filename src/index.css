@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-night-950 text-night-50;
+  }
+
+  body {
+    @apply min-h-screen antialiased;
+  }
+}
+
+/* Leaflet overrides */
+.leaflet-container {
+  @apply bg-night-900;
+}
+
+.leaflet-tile-pane {
+  filter: brightness(0.85) saturate(0.9);
+}
