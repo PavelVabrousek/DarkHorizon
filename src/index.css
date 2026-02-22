@@ -3,12 +3,10 @@
 @tailwind utilities;
 
 @layer base {
-  html {
-    @apply bg-night-950 text-night-50;
-  }
-
-  body {
-    @apply min-h-screen antialiased;
+  html,
+  body,
+  #root {
+    @apply h-full w-full overflow-hidden bg-night-950 text-night-50 antialiased;
   }
 }
 
