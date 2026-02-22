@@ -24,6 +24,10 @@ Thumbs.db
 # TypeScript build info
 *.tsbuildinfo
 
+# Generated map assets – large files, regenerate locally with scripts/generate_maps.py
+scripts/cache/
+scripts/output/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
