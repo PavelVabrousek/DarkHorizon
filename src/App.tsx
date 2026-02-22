@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/react"
 import MapView from './components/MapView'
 
 export default function App() {
@@ -6,6 +7,7 @@ export default function App() {
       <main className="flex-1 overflow-hidden">
         <MapView />
       </main>
+      <Analytics />
     </div>
   )
 }
