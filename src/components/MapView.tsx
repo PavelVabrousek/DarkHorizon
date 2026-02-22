@@ -42,8 +42,22 @@ const OPEN_TOPO_ATTRIBUTION =
   '(<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>) | ' +
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
+/**
+ * ESRI World Imagery – high-resolution satellite / aerial photography.
+ * No API key required. Max native zoom: 19 in most areas.
+ * Non-commercial / hobby use only (ESRI Master Agreement).
+ */
+const ESRI_SAT_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+const ESRI_SAT_ATTRIBUTION =
+  'Tiles &copy; <a href="https://www.esri.com/">Esri</a> — ' +
+  'Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+
 // Zoom level at which we transition from hypsometric overview to topo detail
 const TOPO_ZOOM_THRESHOLD = 3
+
+// Minimum zoom at which satellite mode is available
+const SAT_ZOOM_THRESHOLD = 12
 
 // ── Light-pollution overlay ───────────────────────────────────────────────────
 
@@ -74,18 +88,21 @@ const LP_COPIES: [[number, number], [number, number]][] = [
 const MAP_CENTER: [number, number] = [50.0, 15.0]
 const MAP_ZOOM     = 6
 const MAP_MIN_ZOOM = 3
-const MAP_MAX_ZOOM = 17
+const MAP_MAX_ZOOM = 20
 
 // ── Pane names & CSS filters ──────────────────────────────────────────────────
 
 const PANE_ESRI = 'paneEsri'
 const PANE_TOPO = 'paneTopo'
+const PANE_SAT  = 'paneSat'
 const PANE_LP   = 'paneLp'
 
 // ESRI Physical: simple darken – preserves the hypsometric palette.
 const FILTER_ESRI = 'brightness(0.60) contrast(1.10) saturate(0.85)'
 // OpenTopoMap: slight darken + desaturate so contour lines stay readable.
 const FILTER_TOPO = 'brightness(0.50) contrast(1.10) saturate(0.65)'
+// ESRI Satellite: mild darkening only – keeps terrain features identifiable.
+const FILTER_SAT  = 'brightness(0.82) contrast(1.06) saturate(0.88)'
 // LP overlay: no filter – the Lorenz color palette is already dark-sky themed.
 
 // ── Inner components ──────────────────────────────────────────────────────────
@@ -104,6 +121,11 @@ function SetupPanes() {
       const p = map.createPane(PANE_TOPO)
       p.style.zIndex = '201'
       p.style.filter = FILTER_TOPO
+    }
+    if (!map.getPane(PANE_SAT)) {
+      const p = map.createPane(PANE_SAT)
+      p.style.zIndex = '202'
+      p.style.filter = FILTER_SAT
     }
     if (!map.getPane(PANE_LP)) {
       const p = map.createPane(PANE_LP)
@@ -185,6 +207,14 @@ export default function MapView() {
   const [zoom,   setZoom]   = useState(MAP_ZOOM)
   const [center, setCenter] = useState({ lat: MAP_CENTER[0], lng: MAP_CENTER[1] })
 
+  const { satelliteMode, setSatelliteMode } = useMapSettings()
+
+  /** Auto-revert to topo when the user zooms out below the satellite threshold. */
+  const handleZoomChange = useCallback((z: number) => {
+    setZoom(z)
+    if (z < SAT_ZOOM_THRESHOLD) setSatelliteMode(false)
+  }, [setSatelliteMode])
+
   // ── LP index (Bortle class at map centre) ───────────────────────────────────
   const [lpIndex, setLpIndex] = useState<LpSample | null>(null)
 
@@ -255,8 +285,10 @@ export default function MapView() {
 
   // ───────────────────────────────────────────────────────────────────────────
 
+  const canToggleSat = zoom >= SAT_ZOOM_THRESHOLD
+  const showSat  = satelliteMode && canToggleSat
   const showEsri = zoom < TOPO_ZOOM_THRESHOLD
-  const showTopo = zoom >= TOPO_ZOOM_THRESHOLD
+  const showTopo = zoom >= TOPO_ZOOM_THRESHOLD && !showSat
 
   return (
     <div className="relative h-full w-full">
@@ -269,7 +301,7 @@ export default function MapView() {
         className="h-full w-full bg-night-950"
       >
         <SetupPanes />
-        <ZoomRouter    onZoomChange={setZoom} />
+        <ZoomRouter    onZoomChange={handleZoomChange} />
         <CenterTracker onCenterChange={handleCenterChange} onMoveStart={handleMoveStart} />
 
         {/* ── Layer 1: ESRI Physical – hypsometric overview (zoom 0–2) ── */}
@@ -293,6 +325,16 @@ export default function MapView() {
           opacity={showTopo ? 1 : 0}
         />
 
+        {/* ── Layer 3: ESRI World Imagery – satellite (zoom 12+, user toggled) ── */}
+        <TileLayer
+          url={ESRI_SAT_URL}
+          attribution={ESRI_SAT_ATTRIBUTION}
+          pane={PANE_SAT}
+          maxNativeZoom={19}
+          maxZoom={MAP_MAX_ZOOM}
+          opacity={showSat ? 1 : 0}
+        />
+
         {/* ── Overlay: Light-pollution (optional, user-toggled) ── */}
         <LpOverlay />
 
@@ -312,10 +354,36 @@ export default function MapView() {
         </span>
       </div>
 
-      {/* ── HUD: current layer indicator — sits left of the zoom +/- buttons ── */}
-      <div className="pointer-events-none absolute right-12 top-3 z-[1000] rounded-full border border-night-700 bg-night-900/80 px-3 py-1 text-xs text-night-300 backdrop-blur-sm">
-        {showEsri ? 'Physical · zoom ' + zoom : 'Topographic · zoom ' + zoom}
-      </div>
+      {/* ── HUD: layer indicator / satellite toggle pill ──────────────────────────
+            • zoom < 12  → plain informational text (non-interactive)
+            • zoom ≥ 12  → clickable button toggling topo ↔ satellite
+            Active satellite state gets an indigo tint so the mode is unmistakable. ── */}
+      {canToggleSat ? (
+        <button
+          onClick={() => setSatelliteMode(!satelliteMode)}
+          className={[
+            'absolute right-12 top-3 z-[1000]',
+            'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs',
+            'backdrop-blur-sm transition-colors duration-150',
+            showSat
+              ? 'border-indigo-500 bg-indigo-950/85 text-indigo-300 hover:bg-indigo-900/85'
+              : 'border-night-600 bg-night-900/80 text-night-200 hover:border-indigo-500 hover:text-indigo-300',
+          ].join(' ')}
+          title={showSat ? 'Switch to Topographic' : 'Switch to Satellite'}
+        >
+          {/* Small camera icon */}
+          <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3 flex-shrink-0" aria-hidden="true">
+            <rect x="1" y="4" width="14" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.4"/>
+            <circle cx="8" cy="9" r="2.5" stroke="currentColor" strokeWidth="1.4"/>
+            <path d="M5 4V3.5A1.5 1.5 0 0 1 6.5 2h3A1.5 1.5 0 0 1 11 3.5V4" stroke="currentColor" strokeWidth="1.4"/>
+          </svg>
+          {showSat ? 'Satellite' : 'Topographic'} · zoom {zoom}
+        </button>
+      ) : (
+        <div className="pointer-events-none absolute right-12 top-3 z-[1000] rounded-full border border-night-700 bg-night-900/80 px-3 py-1 text-xs text-night-300 backdrop-blur-sm">
+          {showEsri ? 'Physical' : 'Topographic'} · zoom {zoom}
+        </div>
+      )}
 
       {/* ── HUD: coordinate + elevation status bar — top-right, below the zoom indicator
             Elevation is fetched from Open-Meteo 5 s after the map stops moving. ── */}
