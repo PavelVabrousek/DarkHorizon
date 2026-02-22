@@ -28,6 +28,9 @@ Thumbs.db
 scripts/cache/
 scripts/output/
 
+# public/lp/ is intentionally committed to git (self-hosted LP asset, ~2–6 MB).
+# Generate it once with: python scripts/download_lp.py
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
