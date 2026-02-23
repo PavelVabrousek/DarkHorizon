@@ -123,7 +123,7 @@ const SCALE_MAX_PX = 120
 function computeScale(lat: number, zoom: number): { px: number; label: string } {
   const mpp     = (40_075_016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * Math.pow(2, zoom))
   const maxM    = mpp * SCALE_MAX_PX
-  const niceM   = SCALE_NICE_METRES.findLast((v) => v <= maxM) ?? SCALE_NICE_METRES[0]
+  const niceM   = SCALE_NICE_METRES.filter((v) => v <= maxM).pop() ?? SCALE_NICE_METRES[0]
   const px      = niceM / mpp
   const label   = niceM >= 1_000 ? `${niceM / 1_000} km` : `${niceM} m`
   return { px, label }
