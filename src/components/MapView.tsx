@@ -5,6 +5,8 @@ import 'leaflet/dist/leaflet.css'
 
 import { useMapSettings } from '../store/mapSettings'
 import MapControls from './MapControls'
+import SearchBar, { type SearchSelectPayload } from './SearchBar'
+import LocationMarkers from './LocationMarkers'
 import { preloadLp, sampleLpAt, type LpSample } from '../utils/lpSampler'
 
 // ── Fix Leaflet's broken default marker icons when bundled with Vite ──────────
@@ -105,7 +107,39 @@ const FILTER_TOPO = 'brightness(0.50) contrast(1.10) saturate(0.65)'
 const FILTER_SAT  = 'brightness(0.82) contrast(1.06) saturate(0.88)'
 // LP overlay: no filter – the Lorenz color palette is already dark-sky themed.
 
+// ── Scale bar ─────────────────────────────────────────────────────────────────
+
+const SCALE_NICE_METRES = [
+  1, 2, 5, 10, 20, 50, 100, 200, 500,
+  1_000, 2_000, 5_000, 10_000, 20_000, 50_000,
+  100_000, 200_000, 500_000, 1_000_000, 2_000_000,
+]
+const SCALE_MAX_PX = 120
+
+/**
+ * Compute a "nice" scale bar given the current latitude and zoom level.
+ * Returns the bar width in CSS pixels and a human-readable distance label.
+ */
+function computeScale(lat: number, zoom: number): { px: number; label: string } {
+  const mpp     = (40_075_016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * Math.pow(2, zoom))
+  const maxM    = mpp * SCALE_MAX_PX
+  const niceM   = SCALE_NICE_METRES.findLast((v) => v <= maxM) ?? SCALE_NICE_METRES[0]
+  const px      = niceM / mpp
+  const label   = niceM >= 1_000 ? `${niceM / 1_000} km` : `${niceM} m`
+  return { px, label }
+}
+
 // ── Inner components ──────────────────────────────────────────────────────────
+
+/** Captures the Leaflet map instance into a ref accessible outside MapContainer. */
+function MapRefCapture({ mapRef }: { mapRef: React.MutableRefObject<L.Map | null> }) {
+  const map = useMap()
+  useEffect(() => {
+    mapRef.current = map
+    return () => { mapRef.current = null }
+  }, [map, mapRef])
+  return null
+}
 
 /** Creates named panes and wires up their CSS dark filters. */
 function SetupPanes() {
@@ -207,6 +241,8 @@ export default function MapView() {
   const [zoom,   setZoom]   = useState(MAP_ZOOM)
   const [center, setCenter] = useState({ lat: MAP_CENTER[0], lng: MAP_CENTER[1] })
 
+  const mapRef = useRef<L.Map | null>(null)
+
   const { satelliteMode, setSatelliteMode } = useMapSettings()
 
   /** Auto-revert to topo when the user zooms out below the satellite threshold. */
@@ -283,6 +319,18 @@ export default function MapView() {
     setElevLoading(false)
   }, [cancelElevFetch])
 
+  /** Fly to a location returned by the search bar. */
+  const handleSearchSelect = useCallback(({ lat, lng, extent }: SearchSelectPayload) => {
+    const map = mapRef.current
+    if (!map) return
+    if (extent) {
+      const [west, north, east, south] = extent
+      map.fitBounds([[south, west], [north, east]], { padding: [60, 60], maxZoom: 15, animate: true, duration: 1.2 })
+    } else {
+      map.flyTo([lat, lng], Math.min(Math.max(zoom, 12), 15), { duration: 1.2 })
+    }
+  }, [zoom])
+
   // ───────────────────────────────────────────────────────────────────────────
 
   const canToggleSat = zoom >= SAT_ZOOM_THRESHOLD
@@ -300,6 +348,7 @@ export default function MapView() {
         zoomControl={false}
         className="h-full w-full bg-night-950"
       >
+        <MapRefCapture mapRef={mapRef} />
         <SetupPanes />
         <ZoomRouter    onZoomChange={handleZoomChange} />
         <CenterTracker onCenterChange={handleCenterChange} onMoveStart={handleMoveStart} />
@@ -338,8 +387,16 @@ export default function MapView() {
         {/* ── Overlay: Light-pollution (optional, user-toggled) ── */}
         <LpOverlay />
 
+        {/* ── Observation sites fetched from Supabase ── */}
+        <LocationMarkers />
+
         <ZoomControl position="topright" />
       </MapContainer>
+
+      {/* ── HUD: search bar – top centre ── */}
+      <div className="pointer-events-auto absolute left-1/2 top-3 z-[1001] -translate-x-1/2">
+        <SearchBar onSelect={handleSearchSelect} />
+      </div>
 
       {/* ── HUD: branding ── */}
       <div className="pointer-events-none absolute left-4 top-4 z-[1000] flex items-center gap-2">
@@ -393,6 +450,25 @@ export default function MapView() {
         {!elevLoading && elevation !== null && <span> · {elevation} m</span>}
       </div>
 
+      {/* ── HUD: scale bar – bottom centre ── */}
+      {(() => {
+        const { px, label } = computeScale(center.lat, zoom)
+        const barW = Math.round(px)
+        return (
+          <div className="pointer-events-none absolute bottom-4 left-1/2 z-[1000] -translate-x-1/2 flex flex-col items-center gap-1">
+            <span className="font-mono text-[10px] leading-none text-night-400 drop-shadow-[0_1px_3px_rgba(0,0,0,1)]">
+              {label}
+            </span>
+            {/* Scale bar: left tick + horizontal line + right tick */}
+            <div className="flex items-end">
+              <div className="h-[7px] w-px bg-night-400/80" />
+              <div style={{ width: barW - 2 }} className="mb-[3px] h-px bg-night-400/80" />
+              <div className="h-[7px] w-px bg-night-400/80" />
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ── HUD: bottom strip — site score (left) + layer controls (right)
             items-start pins both top edges to the same line regardless of height. ── */}
       <div className="pointer-events-none absolute bottom-10 left-4 right-4 z-[1000] flex items-start justify-between">
@@ -422,7 +498,7 @@ export default function MapView() {
         </div>
 
         {/* Layer controls */}
-        <MapControls />
+        <MapControls zoom={zoom} center={center} />
 
       </div>
     </div>

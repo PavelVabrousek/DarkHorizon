@@ -18,3 +18,95 @@
 .leaflet-tile-pane {
   filter: brightness(0.85) saturate(0.9);
 }
+
+/* ── DarkHorizon popup theme ───────────────────────────────────────────────── */
+
+.dh-popup .leaflet-popup-content-wrapper {
+  background:    #0a0a1a;         /* night-900 */
+  border:        1px solid #1e1e4d; /* night-700 */
+  border-radius: 10px;
+  box-shadow:    0 12px 32px rgba(0, 0, 0, 0.70);
+  padding:       0;
+}
+
+.dh-popup .leaflet-popup-content {
+  margin: 0;
+  width: auto !important;
+}
+
+.dh-popup .leaflet-popup-tip-container .leaflet-popup-tip {
+  background: #1e1e4d; /* night-700 */
+}
+
+.dh-popup .leaflet-popup-close-button {
+  color: #58588e !important; /* night-400 */
+  top: 8px;
+  right: 8px;
+  font-size: 18px;
+  line-height: 1;
+}
+.dh-popup .leaflet-popup-close-button:hover {
+  color: #c5c5d8 !important; /* night-200 */
+}
+
+/* ── Popup inner content ───────────────────────────────────────────────────── */
+
+.dh-popup-inner {
+  padding: 14px 16px 12px;
+  min-width: 200px;
+}
+
+.dh-popup-name {
+  font-size:   14px;
+  font-weight: 600;
+  color:       #e8e8f0; /* night-50 */
+  margin-bottom: 8px;
+  padding-right: 18px;  /* clearance for close button */
+}
+
+.dh-popup-score-row {
+  margin-bottom: 10px;
+}
+
+.dh-popup-badge {
+  display:       inline-block;
+  font-size:     11px;
+  font-weight:   600;
+  padding:       2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+}
+
+.dh-popup-grid {
+  display:               grid;
+  grid-template-columns: auto 1fr;
+  gap:                   4px 10px;
+  font-size:             11px;
+  color:                 #9e9ebd; /* night-200 */
+  margin:                0 0 10px;
+}
+
+.dh-popup-grid dt {
+  color:       #58588e; /* night-400 */
+  white-space: nowrap;
+  padding-top: 1px;
+}
+
+.dh-popup-grid dd {
+  margin: 0;
+  color:  #c5c5d8; /* night-200 */
+  line-height: 1.5;
+}
+
+.dh-popup-muted {
+  color: #58588e; /* night-400 */
+}
+
+.dh-popup-coords {
+  font-family: 'JetBrains Mono', monospace;
+  font-size:   10px;
+  color:       #3a3a7a; /* night-500 */
+  border-top:  1px solid #1e1e4d;
+  padding-top: 8px;
+  margin-top:  4px;
+}
