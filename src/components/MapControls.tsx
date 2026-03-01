@@ -1,9 +1,6 @@
 import { useState } from 'react'
 import { useMapSettings } from '../store/mapSettings'
 
-// Minimum zoom level at which the Street View button is shown
-const STREETVIEW_ZOOM_THRESHOLD = 15
-
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
 function CheckIcon() {
@@ -24,26 +21,9 @@ function CheckIcon() {
 function LayersIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0">
-      <path d="M2 5.5 L8 3 L14 5.5 L8 8 Z"          stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-      <path d="M2 8.5 L8 11 L14 8.5"                 stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M2 11.5 L8 14 L14 11.5"               stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-/** Pegman-style icon matching Google Maps Street View symbol */
-function StreetViewIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0">
-      {/* Head */}
-      <circle cx="8" cy="3.5" r="2" fill="currentColor" />
-      {/* Body */}
-      <line x1="8" y1="5.5" x2="8" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      {/* Arms */}
-      <line x1="5.5" y1="7.5" x2="10.5" y2="7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      {/* Legs */}
-      <line x1="8" y1="10" x2="6" y2="13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="8" y1="10" x2="10" y2="13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M2 5.5 L8 3 L14 5.5 L8 8 Z"   stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M2 8.5 L8 11 L14 8.5"          stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2 11.5 L8 14 L14 11.5"        stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -54,35 +34,27 @@ interface CheckRowProps {
   checked:  boolean
   onChange: (v: boolean) => void
   label:    string
-  icon?:    React.ReactNode
 }
 
-function CheckRow({ checked, onChange, label, icon }: CheckRowProps) {
+function CheckRow({ checked, onChange, label }: CheckRowProps) {
   return (
     <label className="flex cursor-pointer select-none items-center gap-2 text-night-200 hover:text-night-100">
-      {/* Hidden native checkbox – keeps the label/input relationship for a11y */}
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
         className="sr-only"
       />
-
-      {/* Custom visual checkbox */}
       <span
         aria-hidden="true"
         className={[
           'flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center',
           'rounded border transition-colors duration-150',
-          checked
-            ? 'border-indigo-400 bg-indigo-500'
-            : 'border-night-500 bg-transparent',
+          checked ? 'border-indigo-400 bg-indigo-500' : 'border-night-500 bg-transparent',
         ].join(' ')}
       >
         {checked && <CheckIcon />}
       </span>
-
-      {icon}
       <span>{label}</span>
     </label>
   )
@@ -90,32 +62,17 @@ function CheckRow({ checked, onChange, label, icon }: CheckRowProps) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-interface MapControlsProps {
-  zoom:   number
-  center: { lat: number; lng: number }
-}
-
 /**
- * Collapsible Layers HUD panel.
- * Collapsed state: a small pill toggle button showing the layers icon + "Layers".
- * Expanded state: the same toggle button above the full panel.
- * Positioned by the parent (MapView) inside the bottom-right corner of the HUD strip.
+ * Collapsible Layers HUD panel — light-pollution toggle + opacity slider only.
+ * Street View and other external links live in ExternalActions.
  */
-export default function MapControls({ zoom, center }: MapControlsProps) {
+export default function MapControls() {
   const { lpVisible, setLpVisible, lpOpacity, setLpOpacity } = useMapSettings()
   const [open, setOpen] = useState(false)
 
-  const pct           = Math.round(lpOpacity * 100)
-  const canStreetView = zoom >= STREETVIEW_ZOOM_THRESHOLD
+  const pct = Math.round(lpOpacity * 100)
 
-  function openStreetView() {
-    const lat = center.lat.toFixed(6)
-    const lng = center.lng.toFixed(6)
-    const url = `https://www.google.com/maps?q=&layer=c&cbll=${lat},${lng}&cbp=11,0,0,0,0`
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
-
-  // ── Collapsed: just the toggle button ──────────────────────────────────────
+  // ── Collapsed ──────────────────────────────────────────────────────────────
   if (!open) {
     return (
       <button
@@ -130,11 +87,10 @@ export default function MapControls({ zoom, center }: MapControlsProps) {
     )
   }
 
-  // ── Expanded: toggle button + panel ────────────────────────────────────────
+  // ── Expanded ───────────────────────────────────────────────────────────────
   return (
     <div className="pointer-events-auto flex flex-col items-end gap-2">
 
-      {/* Toggle button — active state */}
       <button
         onClick={() => setOpen(false)}
         className="flex items-center gap-1.5 rounded-full border border-indigo-500/70 bg-night-900/90 px-3 py-1.5 text-xs text-night-100 backdrop-blur-sm transition-colors duration-150 hover:bg-night-800/90"
@@ -145,17 +101,14 @@ export default function MapControls({ zoom, center }: MapControlsProps) {
         <span>Layers</span>
       </button>
 
-      {/* Panel */}
       <div className="flex min-w-[172px] flex-col gap-2.5 rounded-lg border border-night-700 bg-night-900/85 px-3 py-2.5 text-xs backdrop-blur-sm">
 
-        {/* ── Light-pollution checkbox ── */}
         <CheckRow
           checked={lpVisible}
           onChange={setLpVisible}
           label="Light pollution"
         />
 
-        {/* ── Opacity slider – shown only when LP is checked ── */}
         {lpVisible && (
           <div className="flex items-center gap-2 pl-5 text-night-400">
             <span className="w-7 text-right tabular-nums text-night-300">{pct}%</span>
@@ -170,21 +123,6 @@ export default function MapControls({ zoom, center }: MapControlsProps) {
               className="h-1.5 w-20 cursor-pointer accent-indigo-400"
             />
           </div>
-        )}
-
-        {/* ── Street View button – visible only at zoom ≥ 15 ── */}
-        {canStreetView && (
-          <>
-            <hr className="border-night-700" />
-            <button
-              onClick={openStreetView}
-              className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-night-300 transition-colors duration-150 hover:bg-night-800 hover:text-night-100"
-              title="Open Google Street View at map centre"
-            >
-              <StreetViewIcon />
-              <span>Street View</span>
-            </button>
-          </>
         )}
       </div>
     </div>

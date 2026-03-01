@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 
 import { useMapSettings } from '../store/mapSettings'
 import MapControls from './MapControls'
+import ExternalActions from './ExternalActions'
 import SearchBar, { type SearchSelectPayload } from './SearchBar'
 import LocationMarkers from './LocationMarkers'
 import { preloadLp, sampleLpAt, type LpSample } from '../utils/lpSampler'
@@ -474,13 +475,13 @@ export default function MapView() {
         {formatCoord(center.lat, center.lng)}
       </div>
 
-      {/* ── HUD: scale bar – bottom centre ── */}
+      {/* ── HUD: scale bar — top-right, below coordinate bar ── */}
       {(() => {
         const { px, label } = computeScale(center.lat, zoom)
         const barW = Math.round(px)
         return (
-          <div className="pointer-events-none absolute bottom-4 left-1/2 z-[1000] -translate-x-1/2 flex flex-col items-center gap-1.5 rounded-full border border-night-700 bg-night-900/80 px-3 py-1.5 backdrop-blur-sm">
-            <span className="font-mono text-xs font-semibold leading-none text-night-100">
+          <div className="pointer-events-none absolute right-3 top-16 z-[1000] flex flex-col items-end gap-1 rounded-full border border-night-700 bg-night-900/80 px-3 py-1.5 opacity-50 backdrop-blur-sm">
+            <span className="font-mono text-xs leading-none text-night-300">
               {label}
             </span>
             {/* Scale bar: left tick + horizontal line + right tick */}
@@ -532,8 +533,11 @@ export default function MapView() {
           </span>
         </div>
 
-        {/* Layer controls */}
-        <MapControls zoom={zoom} center={center} />
+        {/* Right-side controls: External Actions above Layers */}
+        <div className="flex flex-col items-end gap-2">
+          <ExternalActions center={center} />
+          <MapControls />
+        </div>
 
       </div>
     </div>
