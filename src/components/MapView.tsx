@@ -455,15 +455,15 @@ export default function MapView() {
         const { px, label } = computeScale(center.lat, zoom)
         const barW = Math.round(px)
         return (
-          <div className="pointer-events-none absolute bottom-4 left-1/2 z-[1000] -translate-x-1/2 flex flex-col items-center gap-1">
-            <span className="font-mono text-[10px] leading-none text-night-400 drop-shadow-[0_1px_3px_rgba(0,0,0,1)]">
+          <div className="pointer-events-none absolute bottom-4 left-1/2 z-[1000] -translate-x-1/2 flex flex-col items-center gap-1.5 rounded-full border border-night-700 bg-night-900/80 px-3 py-1.5 backdrop-blur-sm">
+            <span className="font-mono text-xs font-semibold leading-none text-night-100">
               {label}
             </span>
             {/* Scale bar: left tick + horizontal line + right tick */}
             <div className="flex items-end">
-              <div className="h-[7px] w-px bg-night-400/80" />
-              <div style={{ width: barW - 2 }} className="mb-[3px] h-px bg-night-400/80" />
-              <div className="h-[7px] w-px bg-night-400/80" />
+              <div className="h-[9px] w-px bg-night-300" />
+              <div style={{ width: barW - 2 }} className="mb-[4px] h-[2px] bg-night-300" />
+              <div className="h-[9px] w-px bg-night-300" />
             </div>
           </div>
         )
