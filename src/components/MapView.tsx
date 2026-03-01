@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, ImageOverlay, ZoomControl, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, ImageOverlay, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -243,6 +243,10 @@ export default function MapView() {
 
   const mapRef = useRef<L.Map | null>(null)
 
+  // ── Search bar expand / auto-collapse ────────────────────────────────────────
+  const [searchExpanded, setSearchExpanded] = useState(false)
+  const searchCollapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const { satelliteMode, setSatelliteMode } = useMapSettings()
 
   /** Auto-revert to topo when the user zooms out below the satellite threshold. */
@@ -319,7 +323,7 @@ export default function MapView() {
     setElevLoading(false)
   }, [cancelElevFetch])
 
-  /** Fly to a location returned by the search bar. */
+  /** Fly to a location returned by the search bar, then auto-collapse after 10 s. */
   const handleSearchSelect = useCallback(({ lat, lng, extent }: SearchSelectPayload) => {
     const map = mapRef.current
     if (!map) return
@@ -329,6 +333,9 @@ export default function MapView() {
     } else {
       map.flyTo([lat, lng], Math.min(Math.max(zoom, 12), 15), { duration: 1.2 })
     }
+    // Auto-collapse the search bar 10 s after a result is selected
+    if (searchCollapseTimerRef.current) clearTimeout(searchCollapseTimerRef.current)
+    searchCollapseTimerRef.current = setTimeout(() => setSearchExpanded(false), 10_000)
   }, [zoom])
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -390,13 +397,7 @@ export default function MapView() {
         {/* ── Observation sites fetched from Supabase ── */}
         <LocationMarkers />
 
-        <ZoomControl position="topright" />
       </MapContainer>
-
-      {/* ── HUD: search bar – top centre ── */}
-      <div className="pointer-events-auto absolute left-1/2 top-3 z-[1001] -translate-x-1/2">
-        <SearchBar onSelect={handleSearchSelect} />
-      </div>
 
       {/* ── HUD: branding ── */}
       <div className="pointer-events-none absolute left-4 top-4 z-[1000] flex items-center gap-2">
@@ -411,6 +412,32 @@ export default function MapView() {
         </span>
       </div>
 
+      {/* ── HUD: search button / expandable bar — top-left, below branding ── */}
+      <div className="pointer-events-auto absolute left-4 top-12 z-[1001]">
+        {searchExpanded ? (
+          <SearchBar
+            onSelect={handleSearchSelect}
+            onEscape={() => {
+              setSearchExpanded(false)
+              if (searchCollapseTimerRef.current) { clearTimeout(searchCollapseTimerRef.current); searchCollapseTimerRef.current = null }
+            }}
+          />
+        ) : (
+          <button
+            onClick={() => setSearchExpanded(true)}
+            className="flex items-center gap-1.5 rounded-full border border-night-700 bg-night-900/80 px-3 py-1.5 text-night-400 backdrop-blur-sm transition-colors duration-150 hover:border-indigo-500/70 hover:text-night-200"
+            aria-label="Open location search"
+            title="Search for a location"
+          >
+            <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true">
+              <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.4" />
+              <line x1="10" y1="10" x2="14" y2="14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+            <span className="text-xs">Search</span>
+          </button>
+        )}
+      </div>
+
       {/* ── HUD: layer indicator / satellite toggle pill ──────────────────────────
             • zoom < 12  → plain informational text (non-interactive)
             • zoom ≥ 12  → clickable button toggling topo ↔ satellite
@@ -419,7 +446,7 @@ export default function MapView() {
         <button
           onClick={() => setSatelliteMode(!satelliteMode)}
           className={[
-            'absolute right-12 top-3 z-[1000]',
+            'absolute right-3 top-3 z-[1000]',
             'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs',
             'backdrop-blur-sm transition-colors duration-150',
             showSat
@@ -437,17 +464,14 @@ export default function MapView() {
           {showSat ? 'Satellite' : 'Topographic'} · zoom {zoom}
         </button>
       ) : (
-        <div className="pointer-events-none absolute right-12 top-3 z-[1000] rounded-full border border-night-700 bg-night-900/80 px-3 py-1 text-xs text-night-300 backdrop-blur-sm">
+        <div className="pointer-events-none absolute right-3 top-3 z-[1000] rounded-full border border-night-700 bg-night-900/80 px-3 py-1 text-xs text-night-300 backdrop-blur-sm">
           {showEsri ? 'Physical' : 'Topographic'} · zoom {zoom}
         </div>
       )}
 
-      {/* ── HUD: coordinate + elevation status bar — top-right, below the zoom indicator
-            Elevation is fetched from Open-Meteo 5 s after the map stops moving. ── */}
-      <div className="pointer-events-none absolute right-12 top-10 z-[1000] rounded-full border border-night-700 bg-night-900/80 px-3 py-1 font-mono text-xs text-night-300 backdrop-blur-sm">
+      {/* ── HUD: coordinate bar — top-right, below the layer indicator ── */}
+      <div className="pointer-events-none absolute right-3 top-10 z-[1000] rounded-full border border-night-700 bg-night-900/80 px-3 py-1 font-mono text-xs text-night-300 backdrop-blur-sm">
         {formatCoord(center.lat, center.lng)}
-        {elevLoading && <span className="text-night-500"> · …</span>}
-        {!elevLoading && elevation !== null && <span> · {elevation} m</span>}
       </div>
 
       {/* ── HUD: scale bar – bottom centre ── */}
@@ -483,6 +507,17 @@ export default function MapView() {
             {lpIndex
               ? <span className="font-semibold text-night-100">{lpIndex.scale}</span>
               : <span className="text-night-600">—</span>
+            }
+          </span>
+
+          {/* Elevation row — fetched from Open-Meteo after map settles */}
+          <span className="flex items-center gap-1.5 border-b border-night-700 pb-1.5 text-night-200">
+            <span className="text-night-400">Elevation:</span>
+            {elevLoading
+              ? <span className="text-night-500">…</span>
+              : elevation !== null
+                ? <span className="font-semibold text-night-100">{elevation} m</span>
+                : <span className="text-night-600">—</span>
             }
           </span>
 

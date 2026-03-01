@@ -19,6 +19,31 @@
   filter: brightness(0.85) saturate(0.9);
 }
 
+/* ── Leaflet attribution — styled to match the dark HUD theme ─────────────── */
+/* Lifted above the scale bar so it is never obscured by our HUD overlays.     */
+.leaflet-bottom.leaflet-right {
+  bottom: 6px;
+  right:  6px;
+}
+
+.leaflet-control-attribution {
+  background:      rgba(10, 10, 26, 0.78) !important;
+  color:           #6b6b9e !important;
+  font-size:       9px  !important;
+  padding:         2px 8px !important;
+  border-radius:   6px !important;
+  backdrop-filter: blur(4px);
+  border:          1px solid rgba(30, 30, 77, 0.6);
+}
+
+.leaflet-control-attribution a {
+  color: #9494c0 !important;
+}
+
+.leaflet-control-attribution a:hover {
+  color: #c5c5d8 !important;
+}
+
 /* ── DarkHorizon popup theme ───────────────────────────────────────────────── */
 
 .dh-popup .leaflet-popup-content-wrapper {

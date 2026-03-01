@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useMapSettings } from '../store/mapSettings'
 
 // Minimum zoom level at which the Street View button is shown
@@ -15,6 +16,17 @@ function CheckIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  )
+}
+
+/** Three stacked diamond shapes — standard "layers" metaphor */
+function LayersIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0">
+      <path d="M2 5.5 L8 3 L14 5.5 L8 8 Z"          stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M2 8.5 L8 11 L14 8.5"                 stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2 11.5 L8 14 L14 11.5"               stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -39,10 +51,10 @@ function StreetViewIcon() {
 // ── Checkbox row ──────────────────────────────────────────────────────────────
 
 interface CheckRowProps {
-  checked: boolean
+  checked:  boolean
   onChange: (v: boolean) => void
-  label: string
-  icon?: React.ReactNode
+  label:    string
+  icon?:    React.ReactNode
 }
 
 function CheckRow({ checked, onChange, label, icon }: CheckRowProps) {
@@ -84,17 +96,16 @@ interface MapControlsProps {
 }
 
 /**
- * Layers HUD panel — positioned by the parent (MapView) inside a shared
- * bottom-anchored flex row so its top edge stays aligned with the Site Score box.
- * Each layer is a checkbox row; when checked the layer is visible.
- * LP also exposes an opacity slider when active.
- * When zoom ≥ 15, a Street View button appears that opens Google Maps
- * Street View in a new browser tab centred on the current map view.
+ * Collapsible Layers HUD panel.
+ * Collapsed state: a small pill toggle button showing the layers icon + "Layers".
+ * Expanded state: the same toggle button above the full panel.
+ * Positioned by the parent (MapView) inside the bottom-right corner of the HUD strip.
  */
 export default function MapControls({ zoom, center }: MapControlsProps) {
   const { lpVisible, setLpVisible, lpOpacity, setLpOpacity } = useMapSettings()
+  const [open, setOpen] = useState(false)
 
-  const pct = Math.round(lpOpacity * 100)
+  const pct           = Math.round(lpOpacity * 100)
   const canStreetView = zoom >= STREETVIEW_ZOOM_THRESHOLD
 
   function openStreetView() {
@@ -104,50 +115,78 @@ export default function MapControls({ zoom, center }: MapControlsProps) {
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
+  // ── Collapsed: just the toggle button ──────────────────────────────────────
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-night-700 bg-night-900/80 px-3 py-1.5 text-xs text-night-400 backdrop-blur-sm transition-colors duration-150 hover:border-night-600 hover:text-night-200"
+        title="Open layer controls"
+        aria-expanded={false}
+      >
+        <LayersIcon />
+        <span>Layers</span>
+      </button>
+    )
+  }
+
+  // ── Expanded: toggle button + panel ────────────────────────────────────────
   return (
-    <div className="pointer-events-auto flex min-w-[172px] flex-col gap-2.5 rounded-lg border border-night-700 bg-night-900/85 px-3 py-2.5 text-xs backdrop-blur-sm">
+    <div className="pointer-events-auto flex flex-col items-end gap-2">
 
-      {/* ── Header ── */}
-      <span className="font-semibold tracking-wide text-night-100">Layers</span>
+      {/* Toggle button — active state */}
+      <button
+        onClick={() => setOpen(false)}
+        className="flex items-center gap-1.5 rounded-full border border-indigo-500/70 bg-night-900/90 px-3 py-1.5 text-xs text-night-100 backdrop-blur-sm transition-colors duration-150 hover:bg-night-800/90"
+        title="Close layer controls"
+        aria-expanded={true}
+      >
+        <LayersIcon />
+        <span>Layers</span>
+      </button>
 
-      {/* ── Light-pollution checkbox ── */}
-      <CheckRow
-        checked={lpVisible}
-        onChange={setLpVisible}
-        label="Light pollution"
-      />
+      {/* Panel */}
+      <div className="flex min-w-[172px] flex-col gap-2.5 rounded-lg border border-night-700 bg-night-900/85 px-3 py-2.5 text-xs backdrop-blur-sm">
 
-      {/* ── Opacity slider – shown only when LP is checked ── */}
-      {lpVisible && (
-        <div className="flex items-center gap-2 pl-5 text-night-400">
-          <span className="w-7 text-right tabular-nums text-night-300">{pct}%</span>
-          <input
-            type="range"
-            min={10}
-            max={90}
-            step={5}
-            value={pct}
-            onChange={(e) => setLpOpacity(Number(e.target.value) / 100)}
-            title="Adjust light-pollution opacity"
-            className="h-1.5 w-20 cursor-pointer accent-indigo-400"
-          />
-        </div>
-      )}
+        {/* ── Light-pollution checkbox ── */}
+        <CheckRow
+          checked={lpVisible}
+          onChange={setLpVisible}
+          label="Light pollution"
+        />
 
-      {/* ── Street View button – visible only at zoom ≥ 15 ── */}
-      {canStreetView && (
-        <>
-          <hr className="border-night-700" />
-          <button
-            onClick={openStreetView}
-            className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-night-300 transition-colors duration-150 hover:bg-night-800 hover:text-night-100"
-            title="Open Google Street View at map centre"
-          >
-            <StreetViewIcon />
-            <span>Street View</span>
-          </button>
-        </>
-      )}
+        {/* ── Opacity slider – shown only when LP is checked ── */}
+        {lpVisible && (
+          <div className="flex items-center gap-2 pl-5 text-night-400">
+            <span className="w-7 text-right tabular-nums text-night-300">{pct}%</span>
+            <input
+              type="range"
+              min={10}
+              max={90}
+              step={5}
+              value={pct}
+              onChange={(e) => setLpOpacity(Number(e.target.value) / 100)}
+              title="Adjust light-pollution opacity"
+              className="h-1.5 w-20 cursor-pointer accent-indigo-400"
+            />
+          </div>
+        )}
+
+        {/* ── Street View button – visible only at zoom ≥ 15 ── */}
+        {canStreetView && (
+          <>
+            <hr className="border-night-700" />
+            <button
+              onClick={openStreetView}
+              className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-night-300 transition-colors duration-150 hover:bg-night-800 hover:text-night-100"
+              title="Open Google Street View at map centre"
+            >
+              <StreetViewIcon />
+              <span>Street View</span>
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

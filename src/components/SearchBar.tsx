@@ -32,7 +32,9 @@ export interface SearchSelectPayload {
 }
 
 interface SearchBarProps {
-  onSelect: (payload: SearchSelectPayload) => void
+  onSelect:  (payload: SearchSelectPayload) => void
+  /** Called when the user presses Escape — lets the parent collapse the bar */
+  onEscape?: () => void
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -92,7 +94,7 @@ function PinIcon() {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export default function SearchBar({ onSelect }: SearchBarProps) {
+export default function SearchBar({ onSelect, onEscape }: SearchBarProps) {
   const [query,     setQuery]     = useState('')
   const [results,   setResults]   = useState<PhotonFeature[]>([])
   const [open,      setOpen]      = useState(false)
@@ -152,6 +154,7 @@ export default function SearchBar({ onSelect }: SearchBarProps) {
     if (e.key === 'Escape') {
       setOpen(false)
       inputRef.current?.blur()
+      onEscape?.()
       return
     }
     if (!open || results.length === 0) return
