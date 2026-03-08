@@ -31,6 +31,11 @@ scripts/output/
 # public/lp/ is intentionally committed to git (self-hosted LP asset, ~2–6 MB).
 # Generate it once with: python scripts/download_lp.py
 
+# public/cloudcover/ PNGs (~25 MB total) are committed to git.
+# The source GeoTIFFs (~420 MB) are NOT committed — exclude them.
+# Regenerate PNGs from TIFFs with: python scripts/convert_cloudcover.py
+public/cloudcover/*.tif
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

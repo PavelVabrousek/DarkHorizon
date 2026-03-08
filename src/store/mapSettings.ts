@@ -39,6 +39,18 @@ interface MapSettingsState {
   setSatIrOpacity: (v: number) => void
 
   /**
+   * Clear-sky probability overlay (ERA5 / Copernicus, weekly climatology).
+   * Shows statistical probability of clear sky for the current App Time week.
+   * Tiles pre-converted from GeoTIFF to RGBA PNG via scripts/convert_cloudcover.py.
+   */
+  clearSkyVisible: boolean
+  setClearSkyVisible: (v: boolean) => void
+
+  /** Clear-sky overlay opacity, 0–1 */
+  clearSkyOpacity: number
+  setClearSkyOpacity: (v: number) => void
+
+  /**
    * OWM Weather Maps 2.0 cloud-coverage forecast overlay on/off.
    * Requires VITE_OWM_API_KEY. Shows forecast cloud cover for a chosen
    * Unix timestamp (default = next local midnight at the map centre).
@@ -87,6 +99,12 @@ export const useMapSettings = create<MapSettingsState>()((set) => ({
 
   forecastOpacity:      0.7,
   setForecastOpacity:   (forecastOpacity)   => set({ forecastOpacity }),
+
+  clearSkyVisible:    false,
+  setClearSkyVisible: (clearSkyVisible) => set({ clearSkyVisible }),
+
+  clearSkyOpacity:    0.7,
+  setClearSkyOpacity: (clearSkyOpacity) => set({ clearSkyOpacity }),
 
   forecastTimestamp:    0,                   // 0 = auto-compute on first enable
   setForecastTimestamp: (forecastTimestamp) => set({ forecastTimestamp }),

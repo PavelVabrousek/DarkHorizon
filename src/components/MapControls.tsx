@@ -69,17 +69,19 @@ function CheckRow({ checked, onChange, label }: CheckRowProps) {
  */
 export default function MapControls() {
   const {
-    lpVisible,       setLpVisible,       lpOpacity,       setLpOpacity,
-    satIrVisible,    setSatIrVisible,    satIrOpacity,    setSatIrOpacity,
-    forecastVisible, setForecastVisible, forecastOpacity, setForecastOpacity, forecastTimestamp,
-    cloudVisible,    setCloudVisible,    cloudOpacity,    setCloudOpacity,
+    lpVisible,          setLpVisible,          lpOpacity,          setLpOpacity,
+    satIrVisible,       setSatIrVisible,       satIrOpacity,       setSatIrOpacity,
+    forecastVisible,    setForecastVisible,    forecastOpacity,    setForecastOpacity,    forecastTimestamp,
+    cloudVisible,       setCloudVisible,       cloudOpacity,       setCloudOpacity,
+    clearSkyVisible,    setClearSkyVisible,    clearSkyOpacity,    setClearSkyOpacity,
   } = useMapSettings()
   const [open, setOpen] = useState(false)
 
-  const lpPct       = Math.round(lpOpacity       * 100)
-  const satIrPct    = Math.round(satIrOpacity    * 100)
-  const forecastPct = Math.round(forecastOpacity * 100)
-  const cloudPct    = Math.round(cloudOpacity    * 100)
+  const lpPct        = Math.round(lpOpacity        * 100)
+  const satIrPct     = Math.round(satIrOpacity     * 100)
+  const forecastPct  = Math.round(forecastOpacity  * 100)
+  const cloudPct     = Math.round(cloudOpacity     * 100)
+  const clearSkyPct  = Math.round(clearSkyOpacity  * 100)
   // Keep old name so the template below doesn't need a bigger diff
   const pct = lpPct
 
@@ -202,6 +204,31 @@ export default function MapControls() {
               {forecastLabel}
             </div>
           </>
+        )}
+
+        {/* ── Clear-sky probability (ERA5 climatology, weekly PNG) ── */}
+        <div className="border-t border-night-700/60 pt-2">
+          <CheckRow
+            checked={clearSkyVisible}
+            onChange={setClearSkyVisible}
+            label="Clear-sky clim."
+          />
+        </div>
+
+        {clearSkyVisible && (
+          <div className="flex items-center gap-2 pl-5 text-night-400">
+            <span className="w-7 text-right tabular-nums text-night-300">{clearSkyPct}%</span>
+            <input
+              type="range"
+              min={10}
+              max={90}
+              step={5}
+              value={clearSkyPct}
+              onChange={(e) => setClearSkyOpacity(Number(e.target.value) / 100)}
+              title="Adjust clear-sky probability opacity"
+              className="h-1.5 w-20 cursor-pointer accent-white"
+            />
+          </div>
         )}
 
         {/* ── Precipitation radar (RainViewer, ~5 min refresh) ── */}
