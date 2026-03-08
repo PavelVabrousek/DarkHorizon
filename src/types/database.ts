@@ -116,6 +116,24 @@ export interface Database {
         Insert: Omit<Database['public']['Tables']['user_preferences']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['user_preferences']['Insert']>
       }
+      astro_events: {
+        Row: {
+          id: string
+          event_type: string
+          event_date: string
+          label: string
+          kind: string | null
+          max_duration_sec: number | null
+          metadata: Json | null
+          path_geometry: Json | null
+          centerline_geometry: Json | null
+          details: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['astro_events']['Row'], 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['astro_events']['Insert']>
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>

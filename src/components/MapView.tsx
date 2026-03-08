@@ -11,6 +11,9 @@ import ExternalActions from './ExternalActions'
 import SearchBar, { type SearchSelectPayload } from './SearchBar'
 import LocationMarkers from './LocationMarkers'
 import { preloadLp, sampleLpAt, type LpSample } from '../utils/lpSampler'
+import EventSelector from './EventSelector'
+import AstroEventLayer from './AstroEventLayer'
+import TimeController from './TimeController'
 
 // ── Fix Leaflet's broken default marker icons when bundled with Vite ──────────
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
@@ -792,6 +795,9 @@ export default function MapView() {
   const [searchExpanded, setSearchExpanded] = useState(false)
   const searchCollapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // ── Astro Events ─────────────────────────────────────────────────────────────
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+
   const {
     satelliteMode, setSatelliteMode,
     forecastVisible, forecastTimestamp, setForecastTimestamp,
@@ -962,10 +968,16 @@ export default function MapView() {
         {/* ── Overlay: Precipitation radar – RainViewer (optional, user-toggled) ── */}
         <CloudOverlay />
 
+        {/* ── Astro Event Layer (e.g. Solar Eclipses) ── */}
+        <AstroEventLayer eventId={selectedEventId} />
+
         {/* ── Observation sites fetched from Supabase ── */}
         <LocationMarkers />
 
       </MapContainer>
+
+      {/* ── Global Time Controller ── */}
+      <TimeController />
 
       {/* ── Crosshair — fixed center-of-map indicator ── */}
       <div className="pointer-events-none absolute left-1/2 top-1/2 z-[999] -translate-x-1/2 -translate-y-1/2 opacity-30">
@@ -994,8 +1006,8 @@ export default function MapView() {
         </span>
       </div>
 
-      {/* ── HUD: search button / expandable bar — top-left, below branding ── */}
-      <div className="pointer-events-auto absolute left-4 top-12 z-[1001]">
+      {/* ── HUD: search buttons / expandable bars — top-left, below branding ── */}
+      <div className="pointer-events-auto absolute left-4 top-12 z-[1001] flex flex-col gap-2 items-start">
         {searchExpanded ? (
           <SearchBar
             onSelect={handleSearchSelect}
@@ -1018,6 +1030,11 @@ export default function MapView() {
             <span className="text-xs">Search</span>
           </button>
         )}
+        
+        <EventSelector 
+          selectedEventId={selectedEventId} 
+          onSelectEvent={setSelectedEventId} 
+        />
       </div>
 
       {/* ── HUD: layer indicator / satellite toggle pill ──────────────────────────
