@@ -1,4 +1,4 @@
-port { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, WMSTileLayer, ImageOverlay, useMap, useMapEvents } from 'react-leaflet'
 // TileLayer: base maps + GIBS IR satellite overlay
 // WMSTileLayer: EUMETSAT EUMETView Meteosat IR (fills the Europe/Africa gap)

@@ -62,7 +62,7 @@ export default function ClimaticProfileChart({ lat, lon, initialOffset = { x: 0,
     })
   }
 
-  const handlePointerUp = (e: React.PointerEvent) => {
+  const handlePointerUp = () => {
     setIsDragging(false)
   }
 
