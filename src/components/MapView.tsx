@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+port { useCallback, useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, WMSTileLayer, ImageOverlay, useMap, useMapEvents } from 'react-leaflet'
 // TileLayer: base maps + GIBS IR satellite overlay
 // WMSTileLayer: EUMETSAT EUMETView Meteosat IR (fills the Europe/Africa gap)
@@ -15,6 +15,13 @@ import { preloadLp, sampleLpAt, type LpSample } from '../utils/lpSampler'
 import EventSelector from './EventSelector'
 import AstroEventLayer from './AstroEventLayer'
 import TimeController from './TimeController'
+import ClimaticProfileChart from './ClimaticProfileChart'
+
+interface ActiveProfile {
+  id: string
+  lat: number
+  lng: number
+}
 
 // ── Fix Leaflet's broken default marker icons when bundled with Vite ──────────
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
@@ -853,6 +860,21 @@ export default function MapView() {
   // ── Astro Events ─────────────────────────────────────────────────────────────
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
 
+  // ── Yearly Cloud Stats (Persistent Multi-Window) ─────────────────────────────
+  const [activeProfiles, setActiveProfiles] = useState<ActiveProfile[]>([])
+
+  const addClimaticProfile = useCallback(() => {
+    const id = `${center.lat.toFixed(3)}-${center.lng.toFixed(3)}`
+    // Avoid duplicates for the exact same coordinate
+    if (activeProfiles.find(p => p.id === id)) return
+    
+    setActiveProfiles(prev => [...prev, { id, lat: center.lat, lng: center.lng }])
+  }, [center, activeProfiles])
+
+  const removeClimaticProfile = useCallback((id: string) => {
+    setActiveProfiles(prev => prev.filter(p => p.id !== id))
+  }, [])
+
   const {
     satelliteMode, setSatelliteMode,
     forecastVisible, forecastTimestamp, setForecastTimestamp,
@@ -1191,11 +1213,28 @@ export default function MapView() {
 
         {/* Right-side controls: External Actions above Layers */}
         <div className="flex flex-col items-end gap-2">
-          <ExternalActions center={center} />
+          <ExternalActions 
+            center={center} 
+            onAddCloudStat={addClimaticProfile}
+          />
           <MapControls />
         </div>
 
       </div>
+
+      {/* ── Yearly Cloud Stat Charts (Persistent Multi-Window) ── */}
+      <div className="pointer-events-none absolute inset-0 z-[1001]">
+        {activeProfiles.map((p, idx) => (
+          <ClimaticProfileChart 
+            key={p.id}
+            lat={p.lat} 
+            lon={p.lng} 
+            initialOffset={{ x: 0, y: idx * 20 }}
+            onClose={() => removeClimaticProfile(p.id)} 
+          />
+        ))}
+      </div>
+
     </div>
   )
 }

@@ -42,6 +42,19 @@ function ClearOutsideIcon() {
   )
 }
 
+/** Yearly Cloud Stat — cloud icon */
+function CloudIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0">
+      <path
+        d="M4 11.5 C2.3 11.5 1 10.2 1 8.5 C1 7.1 2 5.9 3.3 5.6 C3.8 3.5 5.7 2 8 2 C10 2 11.7 3.1 12.4 4.8 C12.6 4.7 12.8 4.7 13 4.7 C14.4 4.7 15.5 5.8 15.5 7.2 C15.5 8.6 14.4 9.7 13 9.7 H4.5 M4.5 11.5 H13 C14.7 11.5 16 10.2 16 8.5"
+        stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"
+      />
+      <path d="M4.5 11.5 H13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 /** Reusable action-link row inside the panel */
 function ActionButton({
   icon,
@@ -70,6 +83,7 @@ function ActionButton({
 
 interface ExternalActionsProps {
   center: { lat: number; lng: number }
+  onAddCloudStat: () => void
 }
 
 /**
@@ -81,7 +95,7 @@ interface ExternalActionsProps {
  *  • Street View  — Google Maps Street View at exact centre (6 dp)
  *  • Clear Outside — weather/sky forecast at centre (2 dp)
  */
-export default function ExternalActions({ center }: ExternalActionsProps) {
+export default function ExternalActions({ center, onAddCloudStat }: ExternalActionsProps) {
   const [open, setOpen] = useState(false)
 
   function openStreetView() {
@@ -136,13 +150,22 @@ export default function ExternalActions({ center }: ExternalActionsProps) {
       <div className="flex min-w-[172px] flex-col gap-1.5 rounded-lg border border-night-700 bg-night-900/85 px-3 py-2.5 text-xs backdrop-blur-sm">
 
         <ActionButton
+          icon={<CloudIcon />}
+          label="Yearly Cloud Stat"
+          onClick={onAddCloudStat}
+          title="Open yearly cloud coverage statistics for the map center"
+        />
+
+        <hr className="border-night-700/50" />
+
+        <ActionButton
           icon={<StreetViewIcon />}
           label="Street View"
           onClick={openStreetView}
           title="Open Google Maps Street View at map centre"
         />
 
-        <hr className="border-night-700" />
+        <hr className="border-night-700/50" />
 
         <ActionButton
           icon={<ClearOutsideIcon />}

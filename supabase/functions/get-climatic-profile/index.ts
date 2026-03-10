@@ -1,0 +1,130 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+
+const NLAT = 721
+const NLON = 1440
+const NWEEKS = 52
+const PARAMS_PER_WEEK = 4
+const BYTES_PER_POINT = NWEEKS * PARAMS_PER_WEEK // 208 bytes
+const LATS_PER_PART = 145 // NLAT (721) / 5 parts = 144.2 -> 145 rows per part
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  // Handle CORS
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    const { lat, lon } = await req.json()
+
+    if (lat === undefined || lon === undefined) {
+      throw new Error("Missing lat/lon in request body")
+    }
+
+    // 1. Calculate Grid Coordinates (Nearest Neighbor)
+    // ERA5 grid: lat 90 to -90 (721 pts), lon 0 to 359.75 (1440 pts)
+    const latIdx = Math.round((90 - lat) / 0.25)
+    // Normalize lon to 0-360
+    let lonNorm = lon
+    while (lonNorm < 0) lonNorm += 360
+    while (lonNorm >= 360) lonNorm -= 360
+    const lonIdx = Math.round(lonNorm / 0.25) % NLON
+
+    // 2. Determine which part file to read
+    const partNumber = Math.floor(latIdx / LATS_PER_PART) + 1
+    const clampedPart = Math.min(partNumber, 5)
+    const localLatIdx = latIdx % LATS_PER_PART
+    
+    // 3. Calculate Byte Offset in the part file
+    // offset = (local_y * NLON + x) * BYTES_PER_POINT
+    const byteOffset = (localLatIdx * NLON + lonIdx) * BYTES_PER_POINT
+    const byteEnd = byteOffset + BYTES_PER_POINT - 1
+
+    const fileName = `climatic_atlas_part${clampedPart}.bin`
+
+    // 4. Fetch data from Supabase Storage using internal Range request
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    const { data, error } = await supabaseAdmin
+      .storage
+      .from('climatic-data')
+      .download(fileName, {
+        transform: {
+          // Range request doesn't exist in the high-level .download() SDK yet,
+          // so we use the underlying fetch logic.
+        }
+      })
+      
+    // Since the SDK doesn't natively support Range on download() yet, 
+    // we'll construct the signed URL and use standard fetch.
+    const { data: urlData, error: urlError } = await supabaseAdmin
+      .storage
+      .from('climatic-data')
+      .createSignedUrl(fileName, 60)
+
+    if (urlError || !urlData) {
+      throw new Error(`Failed to get signed URL: ${urlError?.message}`)
+    }
+
+    const rangeResponse = await fetch(urlData.signedUrl, {
+      headers: {
+        'Range': `bytes=${byteOffset}-${byteEnd}`
+      }
+    })
+
+    if (!rangeResponse.ok && rangeResponse.status !== 206) {
+      throw new Error(`Storage Range request failed: ${rangeResponse.statusText}`)
+    }
+
+    const arrayBuffer = await rangeResponse.arrayBuffer()
+    const bytes = new Uint8Array(arrayBuffer)
+
+    if (bytes.length !== BYTES_PER_POINT) {
+      throw new Error(`Expected ${BYTES_PER_POINT} bytes, got ${bytes.length}`)
+    }
+
+    // 5. Decode data into weekly profile
+    const profile = []
+    for (let w = 0; w < NWEEKS; w++) {
+      const start = w * PARAMS_PER_WEEK
+      profile.push({
+        week: w + 1,
+        mean: bytes[start] / 255.0,
+        min:  bytes[start + 1] / 255.0,
+        max:  bytes[start + 2] / 255.0,
+        prob: bytes[start + 3] / 255.0,
+      })
+    }
+
+    return new Response(
+      JSON.stringify({
+        lat: lat.toFixed(2),
+        lon: lon.toFixed(2),
+        grid_lat: (90 - latIdx * 0.25).toFixed(2),
+        grid_lon: (lonIdx * 0.25).toFixed(2),
+        profile
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200 
+      }
+    )
+
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400 
+      }
+    )
+  }
+})
