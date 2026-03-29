@@ -8,13 +8,18 @@ const PARAMS_PER_WEEK = 4
 const BYTES_PER_POINT = NWEEKS * PARAMS_PER_WEEK // 208 bytes
 const LATS_PER_PART = 145 // NLAT (721) / 5 parts = 144.2 -> 145 rows per part
 
+// ── B1: Restrict CORS to the configured deployment origin ─────────────────────
+// Set ALLOWED_ORIGIN in Supabase Edge Function secrets:
+//   supabase secrets set ALLOWED_ORIGIN=https://darkhorizon.vercel.app
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? 'https://darkhorizon.vercel.app'
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
 serve(async (req) => {
-  // Handle CORS
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -39,7 +44,7 @@ serve(async (req) => {
     const partNumber = Math.floor(latIdx / LATS_PER_PART) + 1
     const clampedPart = Math.min(partNumber, 5)
     const localLatIdx = latIdx % LATS_PER_PART
-    
+
     // 3. Calculate Byte Offset in the part file
     // offset = (local_y * NLON + x) * BYTES_PER_POINT
     const byteOffset = (localLatIdx * NLON + lonIdx) * BYTES_PER_POINT
@@ -47,48 +52,41 @@ serve(async (req) => {
 
     const fileName = `climatic_atlas_part${clampedPart}.bin`
 
-    // 4. Fetch data from Supabase Storage using internal Range request
+    // 4. Fetch data from Supabase Storage using a signed URL + Range request.
+    //    The high-level .download() SDK does not support Range, so we generate
+    //    a signed URL and use standard fetch for the byte-range request.
+    //    A6: Removed the dead .download() SDK call that previously preceded this.
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { data, error } = await supabaseAdmin
-      .storage
-      .from('climatic-data')
-      .download(fileName, {
-        transform: {
-          // Range request doesn't exist in the high-level .download() SDK yet,
-          // so we use the underlying fetch logic.
-        }
-      })
-      
-    // Since the SDK doesn't natively support Range on download() yet, 
-    // we'll construct the signed URL and use standard fetch.
     const { data: urlData, error: urlError } = await supabaseAdmin
       .storage
       .from('climatic-data')
-      .createSignedUrl(fileName, 60)
+      .createSignedUrl(fileName, 300) // 5-minute TTL — generous for any latency
 
     if (urlError || !urlData) {
-      throw new Error(`Failed to get signed URL: ${urlError?.message}`)
+      // B2: Log internal details server-side; return a sanitised message to client
+      console.error('get-climatic-profile: signed URL error:', urlError)
+      throw new Error('Failed to access climatic data storage.')
     }
 
     const rangeResponse = await fetch(urlData.signedUrl, {
-      headers: {
-        'Range': `bytes=${byteOffset}-${byteEnd}`
-      }
+      headers: { 'Range': `bytes=${byteOffset}-${byteEnd}` }
     })
 
     if (!rangeResponse.ok && rangeResponse.status !== 206) {
-      throw new Error(`Storage Range request failed: ${rangeResponse.statusText}`)
+      console.error('get-climatic-profile: range fetch failed:', rangeResponse.status, rangeResponse.statusText)
+      throw new Error('Failed to read climatic data.')
     }
 
     const arrayBuffer = await rangeResponse.arrayBuffer()
     const bytes = new Uint8Array(arrayBuffer)
 
     if (bytes.length !== BYTES_PER_POINT) {
-      throw new Error(`Expected ${BYTES_PER_POINT} bytes, got ${bytes.length}`)
+      console.error(`get-climatic-profile: expected ${BYTES_PER_POINT} bytes, got ${bytes.length}`)
+      throw new Error('Unexpected data length returned from storage.')
     }
 
     // 5. Decode data into weekly profile
@@ -104,6 +102,7 @@ serve(async (req) => {
       })
     }
 
+    // C5: climatic atlas is static data — safe to cache for 24 hours at CDN/browser level
     return new Response(
       JSON.stringify({
         lat: lat.toFixed(2),
@@ -112,18 +111,24 @@ serve(async (req) => {
         grid_lon: (lonIdx * 0.25).toFixed(2),
         profile
       }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
+      {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=86400', // C5: cache for 24 h
+        },
+        status: 200
       }
     )
 
   } catch (error) {
+    // B2: Only the sanitised message goes to the client; raw detail already logged above
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.'
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
+      JSON.stringify({ error: message }),
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400 
+        status: 400
       }
     )
   }

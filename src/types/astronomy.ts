@@ -1,3 +1,23 @@
+/**
+ * astronomy.ts — Astronomy domain types and scoring utilities.
+ *
+ * A2 — ARCHITECTURE NOTE:
+ * Several exports in this file are defined ahead of their implementation.
+ * The types/constants marked "Future:" are part of the planned scoring
+ * pipeline but are not yet wired into any component or hook. They are kept
+ * here (rather than deleted) to preserve the intended data contract and to
+ * avoid duplication when the features are implemented.
+ *
+ * Actively used:
+ *   • (none yet — sunmoon_cache is not yet queried by the frontend)
+ *
+ * Future (not yet wired up):
+ *   • TwilightType, MoonPhaseName, SunMoonCache
+ *   • DARKNESS_SCORE_WEIGHTS
+ *   • Observation
+ *   • FINAL_SCORE_WEIGHTS, computeFinalScore()
+ */
+
 /** Civil / nautical / astronomical twilight types */
 export type TwilightType =
   | 'day'
@@ -82,8 +102,8 @@ export function computeFinalScore(
   climaScore: number,
 ): number {
   return (
-    weatherScore * FINAL_SCORE_WEIGHTS.weather +
+    weatherScore  * FINAL_SCORE_WEIGHTS.weather  +
     darknessScore * FINAL_SCORE_WEIGHTS.darkness +
-    climaScore * FINAL_SCORE_WEIGHTS.clima
+    climaScore    * FINAL_SCORE_WEIGHTS.clima
   )
 }

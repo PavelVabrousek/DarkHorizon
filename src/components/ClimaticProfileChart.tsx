@@ -30,16 +30,16 @@ export default function ClimaticProfileChart({ lat, lon, initialOffset = { x: 0,
   const [isDragging, setIsDragging] = useState(false)
   const dragStartRef = useRef({ x: 0, y: 0 })
 
-  // Initialize position once on mount
+  // C3: Capture initialOffset in a ref so the effect dep-array stays clean
+  // without requiring the eslint-disable comment.
+  const initialOffsetRef = useRef(initialOffset)
   useEffect(() => {
-    // Initial position: center-bottom of the screen
-    const centerX = window.innerWidth / 2 - 220 // half width of chart
-    const centerY = window.innerHeight - 350 // offset from bottom
-    setPos({ 
-      x: centerX + initialOffset.x, 
-      y: centerY + initialOffset.y 
+    const { x, y } = initialOffsetRef.current
+    setPos({
+      x: window.innerWidth  / 2 - 220 + x,
+      y: window.innerHeight - 350      + y,
     })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const handlePointerDown = (e: React.PointerEvent) => {
     // Only drag from the header area
@@ -77,9 +77,11 @@ export default function ClimaticProfileChart({ lat, lon, initialOffset = { x: 0,
 
         if (invokeError) throw invokeError
         setData(result.profile)
-      } catch (err: any) {
+      } catch (err) {
+        // B5: Log the raw error server-side only; show a generic message in the UI
+        // to avoid leaking internal details (storage paths, SDK errors, etc.)
         console.error('Failed to fetch climatic profile:', err)
-        setError(err.message || 'Failed to load profile')
+        setError('Could not load climate data. Please try again.')
       } finally {
         setLoading(false)
       }

@@ -1,3 +1,16 @@
+/**
+ * weather.ts — Weather and climate domain types and scoring weights.
+ *
+ * A3 — ARCHITECTURE NOTE:
+ * All exports here are part of the planned scoring pipeline but are not yet
+ * wired into any component or hook. They are kept to preserve the intended
+ * data contract for `weather_cache` and `clima_stat` tables.
+ *
+ * Future (not yet wired up):
+ *   • WeatherCache, ClimaStat
+ *   • WEATHER_SCORE_WEIGHTS, CLIMA_SCORE_WEIGHTS
+ */
+
 /** Hourly weather forecast record – mirrors the `weather_cache` table */
 export interface WeatherCache {
   id: string
@@ -45,14 +58,14 @@ export interface ClimaStat {
 
 /** Scoring weights for weather_score calculation */
 export const WEATHER_SCORE_WEIGHTS = {
-  cloud_cover: 0.60,
+  cloud_cover:   0.60,
   precipitation: 0.25,
-  stability: 0.15,
+  stability:     0.15,
 } as const
 
 /** Scoring weights for clima_score calculation */
 export const CLIMA_SCORE_WEIGHTS = {
   clear_sky_probability: 0.70,
-  precipitation: 0.20,
-  wind: 0.10,
+  precipitation:         0.20,
+  wind:                  0.10,
 } as const

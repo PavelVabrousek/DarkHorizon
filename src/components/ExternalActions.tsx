@@ -42,6 +42,40 @@ function ClearOutsideIcon() {
   )
 }
 
+/** Actual Meteogram — stylised weather chart icon */
+function MeteogramIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0">
+      {/* Horizontal baseline */}
+      <line x1="1" y1="13" x2="15" y2="13" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+      {/* Bar chart columns (cloud cover metaphor) */}
+      <rect x="2"  y="9"  width="2" height="4" fill="currentColor" opacity="0.5" rx="0.4" />
+      <rect x="5"  y="6"  width="2" height="7" fill="currentColor" opacity="0.6" rx="0.4" />
+      <rect x="8"  y="4"  width="2" height="9" fill="currentColor" opacity="0.7" rx="0.4" />
+      <rect x="11" y="7"  width="2" height="6" fill="currentColor" opacity="0.5" rx="0.4" />
+      {/* Temperature line */}
+      <polyline
+        points="3,8 6,5.5 9,3.5 12,6"
+        stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"
+        fill="none" opacity="0.9"
+      />
+    </svg>
+  )
+}
+
+/** Save Location — pin drop icon */
+function SaveLocationIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0">
+      <path
+        d="M8 1.5C5.51 1.5 3.5 3.51 3.5 6c0 3.75 4.5 8.5 4.5 8.5S12.5 9.75 12.5 6C12.5 3.51 10.49 1.5 8 1.5z"
+        stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"
+      />
+      <circle cx="8" cy="6" r="1.5" fill="currentColor" />
+    </svg>
+  )
+}
+
 /** Yearly Cloud Stat — cloud icon */
 function CloudIcon() {
   return (
@@ -83,7 +117,9 @@ function ActionButton({
 
 interface ExternalActionsProps {
   center: { lat: number; lng: number }
-  onAddCloudStat: () => void
+  onAddCloudStat:  () => void
+  onSaveLocation:  () => void
+  onAddMeteogram:  () => void
 }
 
 /**
@@ -95,7 +131,7 @@ interface ExternalActionsProps {
  *  • Street View  — Google Maps Street View at exact centre (6 dp)
  *  • Clear Outside — weather/sky forecast at centre (2 dp)
  */
-export default function ExternalActions({ center, onAddCloudStat }: ExternalActionsProps) {
+export default function ExternalActions({ center, onAddCloudStat, onSaveLocation, onAddMeteogram }: ExternalActionsProps) {
   const [open, setOpen] = useState(false)
 
   function openStreetView() {
@@ -148,6 +184,24 @@ export default function ExternalActions({ center, onAddCloudStat }: ExternalActi
 
       {/* Panel */}
       <div className="flex min-w-[172px] flex-col gap-1.5 rounded-lg border border-night-700 bg-night-900/85 px-3 py-2.5 text-xs backdrop-blur-sm">
+
+        <ActionButton
+          icon={<MeteogramIcon />}
+          label="Actual Meteogram"
+          onClick={onAddMeteogram}
+          title="Open 7-night ECMWF hourly meteogram for map centre"
+        />
+
+        <hr className="border-night-700/50" />
+
+        <ActionButton
+          icon={<SaveLocationIcon />}
+          label="Save Location"
+          onClick={onSaveLocation}
+          title="Save current map centre as an observation site"
+        />
+
+        <hr className="border-night-700/50" />
 
         <ActionButton
           icon={<CloudIcon />}

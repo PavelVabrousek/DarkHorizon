@@ -10,7 +10,11 @@
  * and the raw ImageData is cached for zero-latency subsequent lookups.
  */
 
-const LP_URL = '/lp/world_low3.png'
+/**
+ * A8: Exported so MapView.tsx can import this constant instead of
+ * re-declaring it, keeping the two files in sync automatically.
+ */
+export const LP_URL = '/lp/world_low3.png'
 
 // Geographic bounds of the reprojected image (must match download_lp.py)
 const LAT_MIN = -65

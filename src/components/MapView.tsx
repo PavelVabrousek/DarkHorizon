@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, ImageOverlay, useMap, useMapEvents } from 'react-leaflet'
-// TileLayer: base maps
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -10,11 +9,16 @@ import MapControls from './MapControls'
 import ExternalActions from './ExternalActions'
 import SearchBar, { type SearchSelectPayload } from './SearchBar'
 import LocationMarkers from './LocationMarkers'
-import { preloadLp, sampleLpAt, type LpSample } from '../utils/lpSampler'
+// A8: LP_URL imported from lpSampler (single source of truth — no local duplicate)
+import { preloadLp, sampleLpAt, type LpSample, LP_URL } from '../utils/lpSampler'
+// A1: fetchElevation replaces the inline Open-Meteo fetch inside scheduleElevFetch
+import { fetchElevation } from '../lib/openmeteo'
 import EventSelector from './EventSelector'
 import AstroEventLayer from './AstroEventLayer'
 import TimeController from './TimeController'
 import ClimaticProfileChart from './ClimaticProfileChart'
+import MeteogramChart from './MeteogramChart'
+import SaveLocationModal from './SaveLocationModal'
 
 interface ActiveProfile {
   id: string
@@ -81,13 +85,14 @@ const SAT_ZOOM_THRESHOLD = 12
  * Self-hosted in public/lp/ – generated once with scripts/download_lp.py.
  * Bounds: 65°S – 75°N, 180°W – 180°E (plate carree, no reprojection needed).
  *
+ * LP_URL is imported from utils/lpSampler (A8 — single source of truth).
+ *
  * The six 1/120° continent PNGs (NorthAmerica, Europe, …) also live in
  * public/lp/ and are ready for a future zoom-adaptive, higher-resolution
  * implementation. They are not used here because their bounds overlap at
  * continental borders, which would cause double-brightness artifacts when
  * stacked at the same opacity.
  */
-const LP_URL = '/lp/world_low3.png'
 
 // Three copies shifted by ±360° so the overlay wraps seamlessly when the user
 // scrolls past the ±180° meridian (same technique tile layers use internally).
@@ -107,11 +112,11 @@ const MAP_MAX_ZOOM = 20
 
 // ── Pane names & CSS filters ──────────────────────────────────────────────────
 
-const PANE_ESRI   = 'paneEsri'
-const PANE_TOPO   = 'paneTopo'
-const PANE_SAT    = 'paneSat'
-const PANE_LP     = 'paneLp'
-const PANE_CLOUD    = 'paneCloud'      // Precipitation radar (RainViewer)
+const PANE_ESRI      = 'paneEsri'
+const PANE_TOPO      = 'paneTopo'
+const PANE_SAT       = 'paneSat'
+const PANE_LP        = 'paneLp'
+const PANE_CLOUD     = 'paneCloud'     // Precipitation radar (RainViewer)
 const PANE_CLEAR_SKY = 'paneClearSky' // ERA5 clear-sky climatology (weekly PNG)
 
 // ESRI Physical: simple darken – preserves the hypsometric palette.
@@ -120,8 +125,6 @@ const FILTER_ESRI = 'brightness(0.60) contrast(1.10) saturate(0.85)'
 const FILTER_TOPO = 'brightness(0.50) contrast(1.10) saturate(0.65)'
 // ESRI Satellite: mild darkening only – keeps terrain features identifiable.
 const FILTER_SAT  = 'brightness(0.82) contrast(1.06) saturate(0.88)'
-// LP overlay: no filter – the Lorenz color palette is already dark-sky themed.
-// IR satellite: no filter – GIBS tiles use a calibrated IR colour scale; transparent where clear.
 // Radar overlay: slight blue tint to make precipitation visually distinct.
 const FILTER_CLOUD = 'hue-rotate(200deg) saturate(1.4) brightness(0.95)'
 
@@ -139,11 +142,11 @@ const SCALE_MAX_PX = 120
  * Returns the bar width in CSS pixels and a human-readable distance label.
  */
 function computeScale(lat: number, zoom: number): { px: number; label: string } {
-  const mpp     = (40_075_016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * Math.pow(2, zoom))
-  const maxM    = mpp * SCALE_MAX_PX
-  const niceM   = SCALE_NICE_METRES.filter((v) => v <= maxM).pop() ?? SCALE_NICE_METRES[0]
-  const px      = niceM / mpp
-  const label   = niceM >= 1_000 ? `${niceM / 1_000} km` : `${niceM} m`
+  const mpp   = (40_075_016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * Math.pow(2, zoom))
+  const maxM  = mpp * SCALE_MAX_PX
+  const niceM = SCALE_NICE_METRES.filter((v) => v <= maxM).pop() ?? SCALE_NICE_METRES[0]
+  const px    = niceM / mpp
+  const label = niceM >= 1_000 ? `${niceM / 1_000} km` : `${niceM} m`
   return { px, label }
 }
 
@@ -296,9 +299,9 @@ function ClearSkyOverlay() {
 
   if (!everShown) return null
 
-  const week = isoWeekNumber(appTimeMs)
+  const week    = isoWeekNumber(appTimeMs)
   const weekStr = String(week).padStart(2, '0')
-  const url = `/cloudcover/clear_sky_prob_week_${weekStr}.png`
+  const url     = `/cloudcover/clear_sky_prob_week_${weekStr}.png`
 
   return (
     <ImageOverlay
@@ -313,63 +316,25 @@ function ClearSkyOverlay() {
 
 // ── Cloud coverage overlay ────────────────────────────────────────────────────
 
-/**
- * Shape of the RainViewer public weather-maps API response.
- * Endpoint: https://api.rainviewer.com/public/weather-maps.json
- * No API key required — completely free.
- *
- * Note: satellite.infrared is returned empty by the free API tier.
- * We use radar.past instead, which is always populated and equally
- * useful for astronomy planning (shows active precipitation systems).
- */
 interface RainViewerResponse {
-  /** CDN host, e.g. "https://tilecache.rainviewer.com" */
   host: string
-  radar: {
-    /** Available radar frames, sorted oldest → newest (~5-min cadence). */
-    past: Array<{ time: number; path: string }>
-  }
-  satellite: {
-    /** Free tier returns this as an empty array; kept for future fallback. */
-    infrared: Array<{ time: number; path: string }>
-  }
+  radar:     { past:     Array<{ time: number; path: string }> }
+  satellite: { infrared: Array<{ time: number; path: string }> }
 }
 
-/**
- * How often (ms) we poll the RainViewer API to get a fresh tile timestamp.
- * RainViewer updates radar composites every ~5 minutes.
- */
 const CLOUD_REFRESH_MS = 5 * 60 * 1_000   // 5 minutes
-
-const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json'
+const RAINVIEWER_API   = 'https://api.rainviewer.com/public/weather-maps.json'
 
 /**
  * Precipitation-radar TileLayer driven by RainViewer's free radar composites.
- *
- * Tile URL anatomy:
- *   {host}{path}/256/{z}/{x}/{y}/{colorScheme}/{options}.png
- *   color scheme 7 = "Dark Sky" — dark background, cyan/blue precipitation tones,
- *                     ideal for dark-themed maps
- *   options 1_1    = smooth=1, snow=1
- *
- * Source priority:
- *   1. satellite.infrared (infrared cloud coverage) – preferred but currently
- *      empty on the free tier
- *   2. radar.past (precipitation radar) – reliably available on the free tier
- *
- * Behaviour:
- *  • Lazy: the first API fetch only fires once the user enables the layer.
- *  • Auto-refresh: a 5-min interval keeps the timestamp current while
- *    the overlay remains visible.
- *  • Graceful: fetch errors are silently ignored; the last good tile URL
- *    stays in place until the next successful refresh.
+ * Lazy: first API fetch fires only once the user enables the layer.
+ * Auto-refresh: 5-min interval keeps the timestamp current while visible.
  */
 function CloudOverlay() {
   const { cloudVisible, cloudOpacity } = useMapSettings()
-  const [tileUrl, setTileUrl]   = useState<string | null>(null)
+  const [tileUrl,   setTileUrl]   = useState<string | null>(null)
   const [everShown, setEverShown] = useState(false)
 
-  // Only start fetching once the user has turned the layer on at least once
   useEffect(() => {
     if (cloudVisible) setEverShown(true)
   }, [cloudVisible])
@@ -379,16 +344,13 @@ function CloudOverlay() {
       const res  = await fetch(RAINVIEWER_API)
       const data = await res.json() as RainViewerResponse
 
-      // Prefer infrared satellite (shows all clouds); fall back to radar
       const satFrames   = data.satellite?.infrared
       const radarFrames = data.radar?.past
 
       if (satFrames?.length) {
-        // Infrared satellite: color 2 "Universal Blue"
         const latest = satFrames[satFrames.length - 1]
         setTileUrl(`${data.host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png`)
       } else if (radarFrames?.length) {
-        // Precipitation radar: color 7 "Dark Sky" — fits the dark map theme
         const latest = radarFrames[radarFrames.length - 1]
         setTileUrl(`${data.host}${latest.path}/256/{z}/{x}/{y}/7/1_1.png`)
       }
@@ -397,7 +359,6 @@ function CloudOverlay() {
     }
   }, [])
 
-  // Fetch immediately when the layer is first enabled, then refresh every 5 min
   useEffect(() => {
     if (!everShown) return
     fetchLatestTileUrl()
@@ -409,7 +370,6 @@ function CloudOverlay() {
 
   return (
     <TileLayer
-      // Re-mount when the URL changes so Leaflet flushes stale tiles
       key={tileUrl}
       url={tileUrl}
       attribution='Radar &copy; <a href="https://www.rainviewer.com/">RainViewer</a>'
@@ -430,21 +390,18 @@ export default function MapView() {
 
   const mapRef = useRef<L.Map | null>(null)
 
-  // ── Search bar expand / auto-collapse ────────────────────────────────────────
   const [searchExpanded, setSearchExpanded] = useState(false)
   const searchCollapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // ── Astro Events ─────────────────────────────────────────────────────────────
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
 
-  // ── Yearly Cloud Stats (Persistent Multi-Window) ─────────────────────────────
-  const [activeProfiles, setActiveProfiles] = useState<ActiveProfile[]>([])
+  const [activeProfiles,    setActiveProfiles]    = useState<ActiveProfile[]>([])
+  const [activeMeteograms,  setActiveMeteograms]  = useState<ActiveProfile[]>([])
+  const [showSaveModal,     setShowSaveModal]     = useState(false)
 
   const addClimaticProfile = useCallback(() => {
     const id = `${center.lat.toFixed(3)}-${center.lng.toFixed(3)}`
-    // Avoid duplicates for the exact same coordinate
     if (activeProfiles.find(p => p.id === id)) return
-    
     setActiveProfiles(prev => [...prev, { id, lat: center.lat, lng: center.lng }])
   }, [center, activeProfiles])
 
@@ -452,17 +409,23 @@ export default function MapView() {
     setActiveProfiles(prev => prev.filter(p => p.id !== id))
   }, [])
 
-  const {
-    satelliteMode, setSatelliteMode,
-  } = useMapSettings()
+  const addMeteogram = useCallback(() => {
+    const id = `${center.lat.toFixed(3)}-${center.lng.toFixed(3)}`
+    if (activeMeteograms.find(m => m.id === id)) return
+    setActiveMeteograms(prev => [...prev, { id, lat: center.lat, lng: center.lng }])
+  }, [center, activeMeteograms])
 
-  /** Auto-revert to topo when the user zooms out below the satellite threshold. */
+  const removeMeteogram = useCallback((id: string) => {
+    setActiveMeteograms(prev => prev.filter(m => m.id !== id))
+  }, [])
+
+  const { satelliteMode, setSatelliteMode } = useMapSettings()
+
   const handleZoomChange = useCallback((z: number) => {
     setZoom(z)
     if (z < SAT_ZOOM_THRESHOLD) setSatelliteMode(false)
   }, [setSatelliteMode])
 
-  // ── LP index (Bortle class at map centre) ───────────────────────────────────
   const [lpIndex, setLpIndex] = useState<LpSample | null>(null)
 
   // ── Elevation fetch ─────────────────────────────────────────────────────────
@@ -471,15 +434,14 @@ export default function MapView() {
   const [elevation,   setElevation]   = useState<number | null>(null)
   const [elevLoading, setElevLoading] = useState(false)
 
-  /** Cancel any pending timer and in-flight request. */
   const cancelElevFetch = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
     if (abortRef.current) { abortRef.current.abort();        abortRef.current = null }
   }, [])
 
   /**
-   * Wait ELEV_DELAY ms of stillness, then request elevation from Open-Meteo.
-   * Any previous pending call is cancelled first.
+   * Wait 5 s of map stillness, then fetch elevation via the shared
+   * fetchElevation utility (A1). Any previous pending call is cancelled first.
    */
   const scheduleElevFetch = useCallback((lat: number, lng: number) => {
     cancelElevFetch()
@@ -488,27 +450,17 @@ export default function MapView() {
       abortRef.current = ctrl
       setElevLoading(true)
       try {
-        const res  = await fetch(
-          `https://api.open-meteo.com/v1/elevation` +
-          `?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}`,
-          { signal: ctrl.signal },
-        )
-        const json = await res.json() as { elevation?: number[] }
-        setElevation(
-          typeof json.elevation?.[0] === 'number'
-            ? Math.round(json.elevation[0])
-            : null,
-        )
+        // A1: uses fetchElevation from lib/openmeteo instead of inline fetch
+        const elev = await fetchElevation(lat, lng, ctrl.signal)
+        setElevation(elev)
       } catch {
-        // Silently ignore — request was aborted or network error
+        // Silently ignore — aborted or network error
       } finally {
         setElevLoading(false)
       }
     }, 5_000)
   }, [cancelElevFetch])
 
-  // On mount: pre-warm the LP canvas, schedule the first elevation fetch,
-  // and sample the LP index for the initial map centre.
   useEffect(() => {
     preloadLp()
     scheduleElevFetch(MAP_CENTER[0], MAP_CENTER[1])
@@ -516,21 +468,18 @@ export default function MapView() {
     return cancelElevFetch
   }, [scheduleElevFetch, cancelElevFetch])
 
-  /** Called by CenterTracker when the map settles after a pan / zoom. */
   const handleCenterChange = useCallback((lat: number, lng: number) => {
     setCenter({ lat, lng })
     scheduleElevFetch(lat, lng)
     sampleLpAt(lat, lng).then(setLpIndex)
   }, [scheduleElevFetch])
 
-  /** Called by CenterTracker the moment the user starts panning / zooming. */
   const handleMoveStart = useCallback(() => {
     cancelElevFetch()
     setElevation(null)
     setElevLoading(false)
   }, [cancelElevFetch])
 
-  /** Fly to a location returned by the search bar, then auto-collapse after 10 s. */
   const handleSearchSelect = useCallback(({ lat, lng, extent }: SearchSelectPayload) => {
     const map = mapRef.current
     if (!map) return
@@ -540,12 +489,11 @@ export default function MapView() {
     } else {
       map.flyTo([lat, lng], Math.min(Math.max(zoom, 12), 15), { duration: 1.2 })
     }
-    // Auto-collapse the search bar 10 s after a result is selected
     if (searchCollapseTimerRef.current) clearTimeout(searchCollapseTimerRef.current)
     searchCollapseTimerRef.current = setTimeout(() => setSearchExpanded(false), 10_000)
   }, [zoom])
 
-  // ───────────────────────────────────────────────────────────────────────────
+  // ── Derived display flags ────────────────────────────────────────────────────
 
   const canToggleSat = zoom >= SAT_ZOOM_THRESHOLD
   const showSat  = satelliteMode && canToggleSat
@@ -567,17 +515,20 @@ export default function MapView() {
         <ZoomRouter    onZoomChange={handleZoomChange} />
         <CenterTracker onCenterChange={handleCenterChange} onMoveStart={handleMoveStart} />
 
-        {/* ── Layer 1: ESRI Physical – hypsometric overview (zoom 0–2) ── */}
-        <TileLayer
-          url={ESRI_PHYSICAL_URL}
-          attribution={ESRI_PHYSICAL_ATTRIBUTION}
-          pane={PANE_ESRI}
-          maxNativeZoom={8}
-          maxZoom={MAP_MAX_ZOOM}
-          opacity={showEsri ? 1 : 0}
-        />
+        {/* ── Layer 1: ESRI Physical – C1: only mounted at zoom ≤ TOPO_ZOOM_THRESHOLD+1
+              A +1 buffer above threshold (3) prevents a blank flash at the transition. ── */}
+        {zoom <= TOPO_ZOOM_THRESHOLD + 1 && (
+          <TileLayer
+            url={ESRI_PHYSICAL_URL}
+            attribution={ESRI_PHYSICAL_ATTRIBUTION}
+            pane={PANE_ESRI}
+            maxNativeZoom={8}
+            maxZoom={MAP_MAX_ZOOM}
+            opacity={showEsri ? 1 : 0}
+          />
+        )}
 
-        {/* ── Layer 2: OpenTopoMap – contour detail (zoom 3–17) ── */}
+        {/* ── Layer 2: OpenTopoMap – primary base layer, always mounted ── */}
         <TileLayer
           url={OPEN_TOPO_URL}
           attribution={OPEN_TOPO_ATTRIBUTION}
@@ -588,30 +539,33 @@ export default function MapView() {
           opacity={showTopo ? 1 : 0}
         />
 
-        {/* ── Layer 3: ESRI World Imagery – satellite (zoom 12+, user toggled) ── */}
-        <TileLayer
-          url={ESRI_SAT_URL}
-          attribution={ESRI_SAT_ATTRIBUTION}
-          pane={PANE_SAT}
-          maxNativeZoom={19}
-          maxZoom={MAP_MAX_ZOOM}
-          opacity={showSat ? 1 : 0}
-        />
+        {/* ── Layer 3: ESRI Satellite – C1: only mounted when zoom ≥ SAT_ZOOM_THRESHOLD (12)
+              High-res tiles are never pre-fetched at overview zoom levels. ── */}
+        {canToggleSat && (
+          <TileLayer
+            url={ESRI_SAT_URL}
+            attribution={ESRI_SAT_ATTRIBUTION}
+            pane={PANE_SAT}
+            maxNativeZoom={19}
+            maxZoom={MAP_MAX_ZOOM}
+            opacity={showSat ? 1 : 0}
+          />
+        )}
 
         {/* ── Overlay: Light-pollution (optional, user-toggled) ── */}
         <LpOverlay />
 
-        {/* ── Overlay: Clear-sky probability – ERA5 weekly climatology (optional, user-toggled) ── */}
+        {/* ── Overlay: Clear-sky probability – ERA5 weekly climatology ── */}
         <ClearSkyOverlay />
 
-        {/* ── Overlay: Precipitation radar – RainViewer (optional, user-toggled) ── */}
+        {/* ── Overlay: Precipitation radar – RainViewer ── */}
         <CloudOverlay />
 
         {/* ── Astro Event Layer (e.g. Solar Eclipses) ── */}
         <AstroEventLayer eventId={selectedEventId} />
 
         {/* ── Observation sites fetched from Supabase ── */}
-        <LocationMarkers />
+        <LocationMarkers zoom={zoom} />
 
       </MapContainer>
 
@@ -621,13 +575,10 @@ export default function MapView() {
       {/* ── Crosshair — fixed center-of-map indicator ── */}
       <div className="pointer-events-none absolute left-1/2 top-1/2 z-[999] -translate-x-1/2 -translate-y-1/2 opacity-30">
         <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6 text-white" aria-hidden="true">
-          {/* Horizontal arms with center gap */}
           <line x1="0"  y1="12" x2="9"  y2="12" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
           <line x1="15" y1="12" x2="24" y2="12" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-          {/* Vertical arms with center gap */}
           <line x1="12" y1="0"  x2="12" y2="9"  stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
           <line x1="12" y1="15" x2="12" y2="24" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-          {/* Centre dot */}
           <circle cx="12" cy="12" r="1.2" fill="currentColor" />
         </svg>
       </div>
@@ -645,7 +596,7 @@ export default function MapView() {
         </span>
       </div>
 
-      {/* ── HUD: search buttons / expandable bars — top-left, below branding ── */}
+      {/* ── HUD: search + event selector — top-left, below branding ── */}
       <div className="pointer-events-auto absolute left-4 top-12 z-[1001] flex flex-col gap-2 items-start">
         {searchExpanded ? (
           <SearchBar
@@ -669,17 +620,14 @@ export default function MapView() {
             <span className="text-xs">Search</span>
           </button>
         )}
-        
-        <EventSelector 
-          selectedEventId={selectedEventId} 
-          onSelectEvent={setSelectedEventId} 
+
+        <EventSelector
+          selectedEventId={selectedEventId}
+          onSelectEvent={setSelectedEventId}
         />
       </div>
 
-      {/* ── HUD: layer indicator / satellite toggle pill ──────────────────────────
-            • zoom < 12  → plain informational text (non-interactive)
-            • zoom ≥ 12  → clickable button toggling topo ↔ satellite
-            Active satellite state gets an indigo tint so the mode is unmistakable. ── */}
+      {/* ── HUD: layer indicator / satellite toggle — top-right ── */}
       {canToggleSat ? (
         <button
           onClick={() => setSatelliteMode(!satelliteMode)}
@@ -693,7 +641,6 @@ export default function MapView() {
           ].join(' ')}
           title={showSat ? 'Switch to Topographic' : 'Switch to Satellite'}
         >
-          {/* Small camera icon */}
           <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3 flex-shrink-0" aria-hidden="true">
             <rect x="1" y="4" width="14" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.4"/>
             <circle cx="8" cy="9" r="2.5" stroke="currentColor" strokeWidth="1.4"/>
@@ -707,21 +654,18 @@ export default function MapView() {
         </div>
       )}
 
-      {/* ── HUD: coordinate bar — top-right, below the layer indicator ── */}
+      {/* ── HUD: coordinate bar ── */}
       <div className="pointer-events-none absolute right-3 top-10 z-[1000] rounded-full border border-night-700 bg-night-900/80 px-3 py-1 font-mono text-xs text-night-300 backdrop-blur-sm">
         {formatCoord(center.lat, center.lng)}
       </div>
 
-      {/* ── HUD: scale bar — top-right, below coordinate bar ── */}
+      {/* ── HUD: scale bar ── */}
       {(() => {
         const { px, label } = computeScale(center.lat, zoom)
         const barW = Math.round(px)
         return (
           <div className="pointer-events-none absolute right-3 top-16 z-[1000] flex flex-col items-end gap-1 rounded-full border border-night-700 bg-night-900/80 px-3 py-1.5 opacity-50 backdrop-blur-sm">
-            <span className="font-mono text-xs leading-none text-night-300">
-              {label}
-            </span>
-            {/* Scale bar: left tick + horizontal line + right tick */}
+            <span className="font-mono text-xs leading-none text-night-300">{label}</span>
             <div className="flex items-end">
               <div className="h-[9px] w-px bg-night-300" />
               <div style={{ width: barW - 2 }} className="mb-[4px] h-[2px] bg-night-300" />
@@ -731,15 +675,12 @@ export default function MapView() {
         )
       })()}
 
-      {/* ── HUD: bottom strip — site score (left) + layer controls (right)
-            items-start pins both top edges to the same line regardless of height. ── */}
+      {/* ── HUD: bottom strip — site score (left) + controls (right) ── */}
       <div className="pointer-events-none absolute bottom-10 left-4 right-4 z-[1000] flex items-start justify-between">
 
-        {/* Site score legend */}
         <div className="flex flex-col gap-1 rounded-lg border border-night-700 bg-night-900/80 px-3 py-2 text-xs text-night-300 backdrop-blur-sm">
           <span className="mb-1 font-semibold text-night-100">Site score</span>
 
-          {/* LP index row — always shown once the image is loaded */}
           <span className="flex items-center gap-1.5 border-b border-night-700 pb-1.5 text-night-200">
             <span className="text-night-400">LP index:</span>
             {lpIndex
@@ -748,7 +689,6 @@ export default function MapView() {
             }
           </span>
 
-          {/* Elevation row — fetched from Open-Meteo after map settles */}
           <span className="flex items-center gap-1.5 border-b border-night-700 pb-1.5 text-night-200">
             <span className="text-night-400">Elevation:</span>
             {elevLoading
@@ -770,11 +710,12 @@ export default function MapView() {
           </span>
         </div>
 
-        {/* Right-side controls: External Actions above Layers */}
         <div className="flex flex-col items-end gap-2">
-          <ExternalActions 
-            center={center} 
+          <ExternalActions
+            center={center}
             onAddCloudStat={addClimaticProfile}
+            onSaveLocation={() => setShowSaveModal(true)}
+            onAddMeteogram={addMeteogram}
           />
           <MapControls />
         </div>
@@ -784,15 +725,40 @@ export default function MapView() {
       {/* ── Yearly Cloud Stat Charts (Persistent Multi-Window) ── */}
       <div className="pointer-events-none absolute inset-0 z-[1001]">
         {activeProfiles.map((p, idx) => (
-          <ClimaticProfileChart 
+          <ClimaticProfileChart
             key={p.id}
-            lat={p.lat} 
-            lon={p.lng} 
+            lat={p.lat}
+            lon={p.lng}
             initialOffset={{ x: 0, y: idx * 20 }}
-            onClose={() => removeClimaticProfile(p.id)} 
+            onClose={() => removeClimaticProfile(p.id)}
           />
         ))}
       </div>
+
+      {/* ── Meteogram Windows (Persistent Multi-Window) ── */}
+      <div className="pointer-events-none absolute inset-0 z-[1001]">
+        {activeMeteograms.map((m, idx) => (
+          <MeteogramChart
+            key={m.id}
+            lat={m.lat}
+            lon={m.lng}
+            initialOffset={{ x: 0, y: idx * 30 }}
+            onClose={() => removeMeteogram(m.id)}
+          />
+        ))}
+      </div>
+
+      {/* ── Save Location Modal ── */}
+      {showSaveModal && (
+        <SaveLocationModal
+          lat={center.lat}
+          lng={center.lng}
+          elevation={elevation}
+          lpIndex={lpIndex}
+          onClose={() => setShowSaveModal(false)}
+          onSaved={() => setShowSaveModal(false)}
+        />
+      )}
 
     </div>
   )

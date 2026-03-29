@@ -75,11 +75,9 @@ export default function MapControls() {
   } = useMapSettings()
   const [open, setOpen] = useState(false)
 
-  const lpPct        = Math.round(lpOpacity        * 100)
-  const cloudPct     = Math.round(cloudOpacity     * 100)
-  const clearSkyPct  = Math.round(clearSkyOpacity  * 100)
-  // Keep old name so the template below doesn't need a bigger diff
-  const pct = lpPct
+  const lpPct       = Math.round(lpOpacity       * 100)
+  const cloudPct    = Math.round(cloudOpacity    * 100)
+  const clearSkyPct = Math.round(clearSkyOpacity * 100)
 
   // ── Collapsed ──────────────────────────────────────────────────────────────
   if (!open) {
@@ -121,13 +119,13 @@ export default function MapControls() {
 
         {lpVisible && (
           <div className="flex items-center gap-2 pl-5 text-night-400">
-            <span className="w-7 text-right tabular-nums text-night-300">{pct}%</span>
+            <span className="w-7 text-right tabular-nums text-night-300">{lpPct}%</span>
             <input
               type="range"
               min={10}
               max={90}
               step={5}
-              value={pct}
+              value={lpPct}
               onChange={(e) => setLpOpacity(Number(e.target.value) / 100)}
               title="Adjust light-pollution opacity"
               className="h-1.5 w-20 cursor-pointer accent-indigo-400"

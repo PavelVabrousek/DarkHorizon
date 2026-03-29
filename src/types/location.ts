@@ -1,3 +1,13 @@
+/**
+ * location.ts — Location domain types.
+ *
+ * A4 — ARCHITECTURE NOTE:
+ * UserPreferences and ScoredLocation are part of the planned personalization
+ * and scoring pipeline but are not yet wired into any component or hook.
+ * They are kept here to preserve the data contract; remove only when the
+ * corresponding tables/features are confirmed out of scope.
+ */
+
 /** A single segment of the local horizon profile (azimuth → minimum elevation) */
 export interface HorizonSegment {
   azimuth: number
@@ -20,7 +30,7 @@ export interface Location {
   updated_at: string
 }
 
-/** Per-user settings – mirrors the `user_preferences` table */
+/** Per-user settings – mirrors the `user_preferences` table (Future: not yet wired up) */
 export interface UserPreferences {
   id: string
   user_id: string
@@ -34,7 +44,7 @@ export interface UserPreferences {
   updated_at: string
 }
 
-/** Scored location ready for map rendering */
+/** Scored location ready for map rendering (Future: not yet wired up) */
 export interface ScoredLocation extends Location {
   weather_score: number | null
   darkness_score: number | null
@@ -46,7 +56,7 @@ export type ScoreColor = 'green' | 'yellow' | 'red' | 'unknown'
 
 export function getScoreColor(score: number | null): ScoreColor {
   if (score === null) return 'unknown'
-  if (score >= 70) return 'green'
-  if (score >= 40) return 'yellow'
+  if (score >= 70)   return 'green'
+  if (score >= 40)   return 'yellow'
   return 'red'
 }

@@ -2,6 +2,11 @@
  * Supabase database type definitions.
  * Generated shape – will be replaced with `supabase gen types typescript` output
  * once the schema is deployed.
+ *
+ * A5 — USAGE STATUS:
+ *   Actively queried:   locations, astro_events
+ *   Future (not wired): weather_cache, sunmoon_cache, clima_stat,
+ *                       observations, user_preferences
  */
 export type Json =
   | string
