@@ -28,7 +28,7 @@ export async function fetchWeatherForecast(params: OpenMeteoParams) {
   return response.json()
 }
 
-// ── Meteogram (7-day hourly forecast, ECMWF IFS 0.25°) ───────────────────────
+// ── Meteogram (10-day hourly forecast, ECMWF IFS 0.25°) ──────────────────────
 
 export interface MeteogramHourly {
   time:           string[]   // "YYYY-MM-DDTHH:MM" UTC
@@ -45,13 +45,17 @@ export interface MeteogramDaily {
 }
 
 export interface MeteogramApiResponse {
-  hourly: MeteogramHourly
-  daily:  MeteogramDaily
+  hourly:              MeteogramHourly
+  daily:               MeteogramDaily
+  /** Signed offset from UTC in seconds (e.g. 7200 for UTC+2). Provided by Open-Meteo. */
+  utc_offset_seconds:  number
 }
 
 /**
- * Fetch 8 days of hourly forecast data from the ECMWF IFS 0.25° model.
+ * Fetch 11 days of hourly forecast data from the ECMWF IFS 0.25° model.
  * Returns time series in UTC so the caller can do local time conversion.
+ * (rows start at noon UTC, so 10 display days need noon-to-noon coverage
+ *  which requires the 11th day's morning hours — 10 days would truncate the last row)
  */
 export async function fetchMeteogramData(
   lat: number,
@@ -63,8 +67,8 @@ export async function fetchMeteogramData(
   url.searchParams.set('hourly',        'cloudcover,temperature_2m,windspeed_10m,precipitation')
   url.searchParams.set('daily',         'sunrise,sunset')
   url.searchParams.set('models',        'ecmwf_ifs025')
-  url.searchParams.set('forecast_days', '8')
-  url.searchParams.set('timezone',      'UTC')
+  url.searchParams.set('forecast_days', '11')
+  url.searchParams.set('timezone',      'auto')
 
   const response = await fetch(url.toString())
   if (!response.ok) {

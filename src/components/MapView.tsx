@@ -18,12 +18,14 @@ import AstroEventLayer from './AstroEventLayer'
 import TimeController from './TimeController'
 import ClimaticProfileChart from './ClimaticProfileChart'
 import MeteogramChart from './MeteogramChart'
+import HorizonChart from './HorizonChart'
 import SaveLocationModal from './SaveLocationModal'
 
 interface ActiveProfile {
   id: string
   lat: number
   lng: number
+  name?: string
 }
 
 // ── Fix Leaflet's broken default marker icons when bundled with Vite ──────────
@@ -397,6 +399,7 @@ export default function MapView() {
 
   const [activeProfiles,    setActiveProfiles]    = useState<ActiveProfile[]>([])
   const [activeMeteograms,  setActiveMeteograms]  = useState<ActiveProfile[]>([])
+  const [activeHorizons,    setActiveHorizons]    = useState<Array<{ id: string; name: string }>>([])
   const [showSaveModal,     setShowSaveModal]     = useState(false)
 
   const addClimaticProfile = useCallback(() => {
@@ -409,14 +412,37 @@ export default function MapView() {
     setActiveProfiles(prev => prev.filter(p => p.id !== id))
   }, [])
 
+  const addClimaticProfileAt = useCallback((lat: number, lng: number, name: string) => {
+    const id = `${lat.toFixed(3)}-${lng.toFixed(3)}`
+    if (activeProfiles.find(p => p.id === id)) return
+    setActiveProfiles(prev => [...prev, { id, lat, lng, name }])
+  }, [activeProfiles])
+
   const addMeteogram = useCallback(() => {
     const id = `${center.lat.toFixed(3)}-${center.lng.toFixed(3)}`
     if (activeMeteograms.find(m => m.id === id)) return
     setActiveMeteograms(prev => [...prev, { id, lat: center.lat, lng: center.lng }])
   }, [center, activeMeteograms])
 
+  const addMeteogramAt = useCallback((lat: number, lng: number, name: string) => {
+    const id = `${lat.toFixed(3)}-${lng.toFixed(3)}`
+    if (activeMeteograms.find(m => m.id === id)) return
+    setActiveMeteograms(prev => [...prev, { id, lat, lng, name }])
+  }, [activeMeteograms])
+
   const removeMeteogram = useCallback((id: string) => {
     setActiveMeteograms(prev => prev.filter(m => m.id !== id))
+  }, [])
+
+  const addHorizonFor = useCallback((locationId: string, name: string) => {
+    setActiveHorizons(prev => {
+      if (prev.find(h => h.id === locationId)) return prev
+      return [...prev, { id: locationId, name }]
+    })
+  }, [])
+
+  const removeHorizon = useCallback((id: string) => {
+    setActiveHorizons(prev => prev.filter(h => h.id !== id))
   }, [])
 
   const { satelliteMode, setSatelliteMode } = useMapSettings()
@@ -565,7 +591,12 @@ export default function MapView() {
         <AstroEventLayer eventId={selectedEventId} />
 
         {/* ── Observation sites fetched from Supabase ── */}
-        <LocationMarkers zoom={zoom} />
+        <LocationMarkers
+          zoom={zoom}
+          onOpenMeteogram={addMeteogramAt}
+          onOpenCloudStat={addClimaticProfileAt}
+          onOpenHorizon={addHorizonFor}
+        />
 
       </MapContainer>
 
@@ -729,6 +760,7 @@ export default function MapView() {
             key={p.id}
             lat={p.lat}
             lon={p.lng}
+            locationName={p.name}
             initialOffset={{ x: 0, y: idx * 20 }}
             onClose={() => removeClimaticProfile(p.id)}
           />
@@ -742,8 +774,21 @@ export default function MapView() {
             key={m.id}
             lat={m.lat}
             lon={m.lng}
+            locationName={m.name}
             initialOffset={{ x: 0, y: idx * 30 }}
             onClose={() => removeMeteogram(m.id)}
+          />
+        ))}
+      </div>
+
+      {/* ── Horizon Windows (Persistent Multi-Window) ── */}
+      <div className="pointer-events-none absolute inset-0 z-[1001]">
+        {activeHorizons.map((h) => (
+          <HorizonChart
+            key={h.id}
+            locationId={h.id}
+            name={h.name}
+            onClose={() => removeHorizon(h.id)}
           />
         ))}
       </div>

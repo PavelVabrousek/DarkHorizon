@@ -16,11 +16,12 @@ interface ProfilePoint {
 interface ClimaticProfileChartProps {
   lat: number
   lon: number
+  locationName?: string
   initialOffset?: { x: number; y: number }
   onClose: () => void
 }
 
-export default function ClimaticProfileChart({ lat, lon, initialOffset = { x: 0, y: 0 }, onClose }: ClimaticProfileChartProps) {
+export default function ClimaticProfileChart({ lat, lon, locationName, initialOffset = { x: 0, y: 0 }, onClose }: ClimaticProfileChartProps) {
   const [data, setData] = useState<ProfilePoint[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -149,7 +150,9 @@ export default function ClimaticProfileChart({ lat, lon, initialOffset = { x: 0,
     >
       <div className="flex items-center justify-between px-1 drag-handle cursor-grab active:cursor-grabbing">
         <div className="flex flex-col">
-          <span className="text-xs font-bold tracking-tight text-night-100 uppercase">Yearly Cloud Stat</span>
+          <span className="text-xs font-bold tracking-tight text-night-100 uppercase">
+            Yearly Cloud Stat{locationName ? <span className="normal-case text-emerald-400"> — {locationName}</span> : ''}
+          </span>
           <span className="font-mono text-[10px] text-night-500">
             {lat.toFixed(3)}°N, {lon.toFixed(3)}°E • ERA5 Climatology
           </span>

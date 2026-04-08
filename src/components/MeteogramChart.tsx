@@ -7,7 +7,7 @@ import {
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
-const NUM_ROWS = 7
+const NUM_ROWS = 10
 const HOURS    = 24
 const CELL_W   = 15    // px per hour column
 const CLOUD_H  = 20    // px — cloud cover band (upper 2/3 of cell)
@@ -16,8 +16,8 @@ const CELL_H   = CLOUD_H + DARK_H
 // Date is overlaid on the first columns — no separate label column
 const INNER_W  = HOURS * CELL_W  // 24 × 15 = 360 px
 
-/** UTC hour for column index j (column 0 = 12:00 UTC). */
-const colToUTCHour = (j: number) => (j + 12) % 24
+/** Local hour for column index j (column 0 = 12:00 LT, column 12 = 00:00 LT). */
+const colToLocalHour = (j: number) => (j + 12) % 24
 
 // ── Data types ────────────────────────────────────────────────────────────────
 
@@ -55,19 +55,29 @@ function buildRows(
   lon: number,
 ): RowData[] {
   const { hourly } = api
-  const times = hourly.time
+  const times      = hourly.time
+  const offsetSec  = api.utc_offset_seconds  // e.g. 7200 for UTC+2
 
-  // Always start at today's noon UTC — row 0 = today even if noon has passed
-  const now       = new Date()
-  const startNoon = new Date(Date.UTC(
-    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0,
+  // ── Find "today" in the location's local time ──────────────────────────────
+  // Shift the current UTC epoch by the location offset so that getUTC*() methods
+  // return local wall-clock values (the "local-as-UTC" trick).
+  const nowLocalAsUtcMs = Date.now() + offsetSec * 1000
+  const nowLocalAsUtc   = new Date(nowLocalAsUtcMs)
+
+  // Local noon today  (stored as "local-as-UTC" epoch for formatDate compatibility)
+  const startNoonLocalAsUtc = new Date(Date.UTC(
+    nowLocalAsUtc.getUTCFullYear(), nowLocalAsUtc.getUTCMonth(), nowLocalAsUtc.getUTCDate(), 12, 0, 0,
   ))
+  const startNoonMs = startNoonLocalAsUtc.getTime()   // "local noon as UTC" epoch
 
-  const startStr = startNoon.toISOString().slice(0, 16)
+  // The API now returns times in local time (timezone=auto), e.g. "2026-04-06T12:00".
+  // We look for the "T12:00" entry that matches today's local date.
+  const startStr = startNoonLocalAsUtc.toISOString().slice(0, 16)  // "YYYY-MM-DDT12:00"
   let startIdx = times.findIndex(t => t === startStr)
   if (startIdx < 0) {
-    const firstMs = new Date(times[0] + 'Z').getTime()
-    startIdx = Math.round((startNoon.getTime() - firstMs) / 3_600_000)
+    // fallback: compute offset from first timestamp
+    const firstLocalAsUtcMs = new Date(times[0] + 'Z').getTime()
+    startIdx = Math.round((startNoonMs - firstLocalAsUtcMs) / 3_600_000)
   }
   startIdx = Math.max(0, startIdx)
 
@@ -83,15 +93,19 @@ function buildRows(
       const idx = offset + h
       if (idx >= times.length) break
 
-      const timeMs = new Date(times[idx] + 'Z').getTime()
-      const date   = new Date(timeMs)
+      // Parse the local time string as if it were UTC (gives "local-as-UTC" ms).
+      // getUTC*() on this Date gives correct local wall-clock values for display.
+      const localAsUtcMs = new Date(times[idx] + 'Z').getTime()
 
-      const sunAlt  = getSunAltDeg(date, lat, lon)
-      const moonAlt = getMoonAltDeg(date, lat, lon)
-      const phase   = getMoonPhase(date)
+      // Derive real UTC for astronomical calculations: local - offset = UTC
+      const realUtcDate  = new Date(localAsUtcMs - offsetSec * 1000)
+
+      const sunAlt  = getSunAltDeg(realUtcDate, lat, lon)
+      const moonAlt = getMoonAltDeg(realUtcDate, lat, lon)
+      const phase   = getMoonPhase(realUtcDate)
 
       cells.push({
-        timeMs,
+        timeMs:     localAsUtcMs,
         cloudPct:   hourly.cloudcover[idx]     ?? 0,
         tempC:      hourly.temperature_2m[idx] ?? 0,
         windMs:     hourly.windspeed_10m[idx]  ?? 0,
@@ -109,7 +123,7 @@ function buildRows(
       prevMoonAlt = moonAlt
     }
 
-    rows.push({ noonMs: startNoon.getTime() + r * 86_400_000, cells })
+    rows.push({ noonMs: startNoonMs + r * 86_400_000, cells })
   }
 
   return rows
@@ -120,12 +134,14 @@ function buildRows(
 interface MeteogramChartProps {
   lat: number
   lon: number
+  locationName?: string
   initialOffset?: { x: number; y: number }
   onClose: () => void
 }
 
 export default function MeteogramChart({
   lat, lon,
+  locationName,
   initialOffset = { x: 0, y: 0 },
   onClose,
 }: MeteogramChartProps) {
@@ -141,7 +157,7 @@ export default function MeteogramChart({
   useEffect(() => {
     setPos({
       x: window.innerWidth  / 2 - (INNER_W + 24) / 2 + offsetRef.current.x,
-      y: window.innerHeight - 480 + offsetRef.current.y,
+      y: window.innerHeight - 560 + offsetRef.current.y,
     })
   }, [])
 
@@ -236,11 +252,11 @@ export default function MeteogramChart({
       onPointerUp={onPointerUp}
     >
       {/* ── Header — title + lat/lon + source inline, single line ── */}
-      <div className="drag-handle flex cursor-grab select-none items-center justify-between px-3 pt-2 pb-1 active:cursor-grabbing">
+      <div className="drag-handle flex cursor-grab select-none items-center justify-between px-3 pt-2 pb-0 active:cursor-grabbing">
         <span style={{ fontSize: 9.5 }} className="font-bold uppercase tracking-wider text-night-100">
-          Actual Meteogram
+          Meteogram{locationName ? <span className="text-indigo-300"> — {locationName}</span> : ''}
           <span className="font-mono font-bold text-white" style={{ fontSize: 8 }}>
-            {' '}({lat.toFixed(3)}°N {lon.toFixed(3)}°E · ECMWF IFS)
+            {' '}({lat.toFixed(3)}&deg;N {lon.toFixed(3)}&deg;E &middot; ECMWF IFS &middot; LT)
           </span>
         </span>
         <button
@@ -253,10 +269,10 @@ export default function MeteogramChart({
         </button>
       </div>
 
-      {/* ── Hour header ── */}
+      {/* ── Hour header (local time) ── */}
       <div className="flex select-none px-3" style={{ marginBottom: 1 }}>
         {Array.from({ length: HOURS }, (_, j) => {
-          const h = colToUTCHour(j)
+          const h = colToLocalHour(j)
           return (
             <div
               key={j}
@@ -278,6 +294,12 @@ export default function MeteogramChart({
           const tempPoints = row.cells
             .map((c, j) => `${(j * CELL_W + CELL_W / 2).toFixed(1)},${tempY(c.tempC).toFixed(1)}`)
             .join(' ')
+
+          // Per-row min/max for temperature labels
+          const rowMaxCell = row.cells.reduce((b, c) => c.tempC > b.tempC ? c : b, row.cells[0])
+          const rowMinCell = row.cells.reduce((b, c) => c.tempC < b.tempC ? c : b, row.cells[0])
+          const rowMaxIdx  = row.cells.indexOf(rowMaxCell)
+          const rowMinIdx  = row.cells.indexOf(rowMinCell)
 
           return (
             <div key={ri} className="relative flex" style={{ height: CELL_H }}>
@@ -310,9 +332,9 @@ export default function MeteogramChart({
                 {formatDate(row.noonMs)}
               </span>
 
-              {/* Temperature polyline */}
+              {/* Temperature polyline + min/max labels */}
               <svg
-                style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
+                style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', overflow: 'visible' }}
                 width={HOURS * CELL_W}
                 height={CLOUD_H}
               >
@@ -324,6 +346,35 @@ export default function MeteogramChart({
                   strokeLinejoin="round"
                   strokeLinecap="round"
                 />
+                {/* Max temp label — warm amber, placed just below the peak */}
+                {row.cells.length > 0 && (
+                  <text
+                    x={(rowMaxIdx * CELL_W + CELL_W / 2).toFixed(1)}
+                    y={(tempY(rowMaxCell.tempC) + 7).toFixed(1)}
+                    textAnchor="middle"
+                    fontSize={6}
+                    fontWeight="bold"
+                    fontFamily="ui-monospace, monospace"
+                    fill="rgba(255,210,80,0.95)"
+                  >
+                    {Math.round(rowMaxCell.tempC)}°
+                  </text>
+                )}
+                {/* Min temp label — cool blue, placed just above the trough */}
+                {row.cells.length > 0 && rowMinIdx !== rowMaxIdx && (
+                  <text
+                    x={(rowMinIdx * CELL_W + CELL_W / 2).toFixed(1)}
+                    y={(tempY(rowMinCell.tempC) - 1).toFixed(1)}
+                    textAnchor="middle"
+                    dominantBaseline="auto"
+                    fontSize={6}
+                    fontWeight="bold"
+                    fontFamily="ui-monospace, monospace"
+                    fill="rgba(130,200,255,0.95)"
+                  >
+                    {Math.round(rowMinCell.tempC)}°
+                  </text>
+                )}
               </svg>
 
               {/* Event icons */}
@@ -341,26 +392,26 @@ export default function MeteogramChart({
                   }}
                 >
                   {cell.isSunrise && (
-                    <span style={{ position: 'absolute', left: 0, top: 0, fontSize: 12 }} title="Sunrise">☀↑</span>
+                    <span style={{ position: 'absolute', left: 0, top: 0, fontSize: 12 }} title="Sunrise">&#9728;&#8593;</span>
                   )}
                   {cell.isSunset && (
-                    <span style={{ position: 'absolute', left: 0, top: 0, fontSize: 12 }} title="Sunset">☀↓</span>
+                    <span style={{ position: 'absolute', left: 0, top: 0, fontSize: 12 }} title="Sunset">&#9728;&#8595;</span>
                   )}
                   {cell.isMoonrise && (
                     <span style={{ position: 'absolute', left: 0, top: CLOUD_H - 1, fontSize: 11 }} title="Moonrise">
-                      {moonPhaseEmoji(cell.moonPhase)}↑
+                      {moonPhaseEmoji(cell.moonPhase)}&#8593;
                     </span>
                   )}
                   {cell.isMoonset && (
                     <span style={{ position: 'absolute', left: 0, top: CLOUD_H - 1, fontSize: 11 }} title="Moonset">
-                      {moonPhaseEmoji(cell.moonPhase)}↓
+                      {moonPhaseEmoji(cell.moonPhase)}&#8595;
                     </span>
                   )}
                   {cell.precipMm > 0.15 && (
-                    <span style={{ position: 'absolute', left: 0, top: 4, fontSize: 11 }} title={`${cell.precipMm.toFixed(1)} mm/h`}>💧</span>
+                    <span style={{ position: 'absolute', left: 0, top: 4, fontSize: 11 }} title={`${cell.precipMm.toFixed(1)} mm/h`}>&#128167;</span>
                   )}
                   {cell.windMs > 10 && (
-                    <span style={{ position: 'absolute', left: 0, top: 11, fontSize: 11 }} title={`${cell.windMs.toFixed(0)} m/s`}>💨</span>
+                    <span style={{ position: 'absolute', left: 0, top: 11, fontSize: 11 }} title={`${cell.windMs.toFixed(0)} m/s`}>&#128168;</span>
                   )}
                 </span>
               ))}
@@ -385,8 +436,8 @@ export default function MeteogramChart({
         </div>
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-[7px] font-bold text-white">── temp</span>
-          <span className="text-[7px] font-bold text-white">💧&gt;0.15mm</span>
-          <span className="text-[7px] font-bold text-white">💨&gt;10m/s</span>
+          <span className="text-[7px] font-bold text-white">&#128167;&gt;0.15mm</span>
+          <span className="text-[7px] font-bold text-white">&#128168;&gt;10m/s</span>
         </div>
       </div>
     </div>

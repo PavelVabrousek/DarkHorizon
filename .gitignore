@@ -44,3 +44,7 @@ pnpm-debug.log*
 
 # Vercel
 .vercel
+
+# Horizon script — local caches and debug output (regenerate with compute_horizon.py)
+dem_cache/
+horizon_output/

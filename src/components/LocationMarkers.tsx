@@ -97,7 +97,15 @@ const BORTLE_LABEL: Record<number, string> = {
 
 // ── Single marker ─────────────────────────────────────────────────────────────
 
-function LocationMarker({ loc, radius }: { loc: Location; radius: number }) {
+interface LocationMarkerProps {
+  loc: Location
+  radius: number
+  onOpenMeteogram: (lat: number, lng: number, name: string) => void
+  onOpenCloudStat: (lat: number, lng: number, name: string) => void
+  onOpenHorizon: (locationId: string, name: string) => void
+}
+
+function LocationMarker({ loc, radius, onOpenMeteogram, onOpenCloudStat, onOpenHorizon }: LocationMarkerProps) {
   const { fill, stroke } = bortleToLpColor(loc.bortle_class)
 
   return (
@@ -117,14 +125,41 @@ function LocationMarker({ loc, radius }: { loc: Location; radius: number }) {
           {/* Name row */}
           <div className="dh-popup-name">{loc.name}</div>
 
-          {/* Bortle badge */}
-          <div className="dh-popup-score-row">
-            <span
-              className="dh-popup-badge"
-              style={{ background: fill, color: stroke === '#ffffff' ? '#fff' : '#000' }}
+          {/* Chart launch buttons */}
+          <div className="dh-popup-score-row" style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => onOpenMeteogram(loc.latitude, loc.longitude, loc.name)}
+              style={{
+                fontSize: 9, padding: '2px 6px', borderRadius: 4,
+                background: '#1e1b4b', color: '#a5b4fc',
+                border: '1px solid #4338ca', cursor: 'pointer', lineHeight: 1.4,
+              }}
+              title="Open 10-day meteogram for this location"
             >
-              Bortle {loc.bortle_class}
-            </span>
+              Meteo
+            </button>
+            <button
+              onClick={() => onOpenCloudStat(loc.latitude, loc.longitude, loc.name)}
+              style={{
+                fontSize: 9, padding: '2px 6px', borderRadius: 4,
+                background: '#064e3b', color: '#6ee7b7',
+                border: '1px solid #059669', cursor: 'pointer', lineHeight: 1.4,
+              }}
+              title="Open yearly cloud statistics for this location"
+            >
+              Clima
+            </button>
+            <button
+              onClick={() => onOpenHorizon(loc.id, loc.name)}
+              style={{
+                fontSize: 9, padding: '2px 6px', borderRadius: 4,
+                background: '#451a03', color: '#fcd34d',
+                border: '1px solid #b45309', cursor: 'pointer', lineHeight: 1.4,
+              }}
+              title="View local horizon profile for this location"
+            >
+              Horizon
+            </button>
           </div>
 
           {/* Stats grid */}
@@ -165,6 +200,9 @@ interface LocationMarkersProps {
    *  doesn't need its own useMapEvents listener (which interfered with the
    *  LP overlay pane rendering). */
   zoom: number
+  onOpenMeteogram: (lat: number, lng: number, name: string) => void
+  onOpenCloudStat: (lat: number, lng: number, name: string) => void
+  onOpenHorizon: (locationId: string, name: string) => void
 }
 
 /**
@@ -173,7 +211,7 @@ interface LocationMarkersProps {
  * Marker radius scales with zoom so dots shrink at low zoom levels.
  * Must be placed inside a react-leaflet <MapContainer>.
  */
-export default function LocationMarkers({ zoom }: LocationMarkersProps) {
+export default function LocationMarkers({ zoom, onOpenMeteogram, onOpenCloudStat, onOpenHorizon }: LocationMarkersProps) {
   const { data: locations, isLoading, isError } = useLocations()
 
   const radius = zoomToRadius(zoom)
@@ -183,7 +221,14 @@ export default function LocationMarkers({ zoom }: LocationMarkersProps) {
   return (
     <>
       {locations.map((loc) => (
-        <LocationMarker key={loc.id} loc={loc} radius={radius} />
+        <LocationMarker
+          key={loc.id}
+          loc={loc}
+          radius={radius}
+          onOpenMeteogram={onOpenMeteogram}
+          onOpenCloudStat={onOpenCloudStat}
+          onOpenHorizon={onOpenHorizon}
+        />
       ))}
     </>
   )
