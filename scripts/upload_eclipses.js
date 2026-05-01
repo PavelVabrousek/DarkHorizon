@@ -2,20 +2,53 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 
-// Initialize Supabase client
 const supabaseUrl = process.env.VITE_SUPABASE_URL
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase credentials. Run with: node --env-file=.env scripts/upload_eclipses.js')
+function getArgValue(name) {
+  const prefix = `${name}=`
+  const inline = process.argv.find((arg) => arg.startsWith(prefix))
+  if (inline) return inline.slice(prefix.length)
+
+  const idx = process.argv.indexOf(name)
+  return idx >= 0 ? process.argv[idx + 1] : undefined
+}
+
+function usage() {
+  return [
+    'Usage:',
+    '  node --env-file=.env scripts/upload_eclipses.js --input-dir <path-to-json-dir>',
+    '',
+    'Required environment variables:',
+    '  VITE_SUPABASE_URL',
+    '  SUPABASE_SERVICE_ROLE_KEY  (or legacy SUPABASE_SERVICE_KEY)',
+    '',
+    'Optional:',
+    '  ECLIPSE_JSON_DIR can be used instead of --input-dir.',
+  ].join('\n')
+}
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('Missing Supabase admin credentials.\n')
+  console.error(usage())
   process.exit(1)
 }
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+})
 
-const ECLIPSE_JSON_DIR = 'C:\\Users\\ASUS\\Documents\\GitHub\\EclipseCalculator\\Output_JSON'
+const ECLIPSE_JSON_DIR = getArgValue('--input-dir') || process.env.ECLIPSE_JSON_DIR
 
 async function main() {
+  if (!ECLIPSE_JSON_DIR) {
+    console.error(`Missing input directory.\n\n${usage()}`)
+    process.exit(1)
+  }
+
   console.log(`Reading eclipse files from ${ECLIPSE_JSON_DIR}...`)
   
   if (!fs.existsSync(ECLIPSE_JSON_DIR)) {
@@ -78,9 +111,9 @@ async function main() {
   console.log('\n--- Upload Complete ---')
   console.log(`Successfully uploaded: ${successCount}`)
   console.log(`Errors: ${errorCount}`)
-  
+
   if (errorCount > 0) {
-    console.log('\nIf you got RLS errors, make sure you ran the SQL script to create the table and allow inserts/updates.')
+    console.log('\nIf you got RLS errors, make sure this script is using a service-role key, not the anon key.')
   }
 }
 

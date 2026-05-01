@@ -36,6 +36,7 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['locations']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['locations']['Insert']>
+        Relationships: []
       }
       weather_cache: {
         Row: {
@@ -53,6 +54,7 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['weather_cache']['Row'], 'id'>
         Update: Partial<Database['public']['Tables']['weather_cache']['Insert']>
+        Relationships: []
       }
       sunmoon_cache: {
         Row: {
@@ -71,6 +73,7 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['sunmoon_cache']['Row'], 'id'>
         Update: Partial<Database['public']['Tables']['sunmoon_cache']['Insert']>
+        Relationships: []
       }
       clima_stat: {
         Row: {
@@ -88,6 +91,7 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['clima_stat']['Row'], 'id'>
         Update: Partial<Database['public']['Tables']['clima_stat']['Insert']>
+        Relationships: []
       }
       observations: {
         Row: {
@@ -104,6 +108,7 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['observations']['Row'], 'id' | 'created_at'>
         Update: Partial<Database['public']['Tables']['observations']['Insert']>
+        Relationships: []
       }
       user_preferences: {
         Row: {
@@ -120,6 +125,7 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['user_preferences']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['user_preferences']['Insert']>
+        Relationships: []
       }
       astro_events: {
         Row: {
@@ -138,6 +144,7 @@ export interface Database {
         }
         Insert: Omit<Database['public']['Tables']['astro_events']['Row'], 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['astro_events']['Insert']>
+        Relationships: []
       }
     }
     Views: Record<string, never>

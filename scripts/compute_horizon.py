@@ -939,18 +939,21 @@ def _supabase_client():
     """
     Return a Supabase client.
     Reads credentials from .env:
-      VITE_SUPABASE_URL        – project URL
-      SUPABASE_SERVICE_KEY     – service-role key  (preferred for writes)
-      VITE_SUPABASE_ANON_KEY   – fallback (anon key, subject to RLS)
+      VITE_SUPABASE_URL          – project URL
+      SUPABASE_SERVICE_ROLE_KEY  – service-role key for writes
+      SUPABASE_SERVICE_KEY       – legacy alias, still accepted
+
+    The service-role key is required because batch horizon writes are admin
+    maintenance operations and should not depend on permissive anonymous RLS.
     """
     load_dotenv()
     url = os.environ.get("VITE_SUPABASE_URL", "")
-    key = (os.environ.get("SUPABASE_SERVICE_KEY")
-           or os.environ.get("VITE_SUPABASE_ANON_KEY", ""))
+    key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+           or os.environ.get("SUPABASE_SERVICE_KEY", ""))
     if not url or not key:
         raise EnvironmentError(
-            "VITE_SUPABASE_URL and SUPABASE_SERVICE_KEY (or VITE_SUPABASE_ANON_KEY) "
-            "must be set in .env")
+            "VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY "
+            "(or legacy SUPABASE_SERVICE_KEY) must be set in .env")
     from supabase import create_client
     return create_client(url, key)
 

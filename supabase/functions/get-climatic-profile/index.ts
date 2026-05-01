@@ -18,6 +18,20 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+function parseCoordinate(value: unknown, name: 'lat' | 'lon'): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`Invalid ${name}: expected a finite number.`)
+  }
+
+  const min = name === 'lat' ? -90 : -180
+  const max = name === 'lat' ?  90 :  180
+  if (value < min || value > max) {
+    throw new Error(`Invalid ${name}: expected ${min}..${max}.`)
+  }
+
+  return value
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -25,15 +39,19 @@ serve(async (req) => {
   }
 
   try {
-    const { lat, lon } = await req.json()
+    const body = await req.json().catch(() => null) as { lat?: unknown; lon?: unknown } | null
+    if (!body) throw new Error('Invalid JSON request body.')
 
-    if (lat === undefined || lon === undefined) {
-      throw new Error("Missing lat/lon in request body")
-    }
+    const lat = parseCoordinate(body.lat, 'lat')
+    const lon = parseCoordinate(body.lon, 'lon')
 
     // 1. Calculate Grid Coordinates (Nearest Neighbor)
     // ERA5 grid: lat 90 to -90 (721 pts), lon 0 to 359.75 (1440 pts)
     const latIdx = Math.round((90 - lat) / 0.25)
+    if (latIdx < 0 || latIdx >= NLAT) {
+      throw new Error('Latitude is outside climatic atlas bounds.')
+    }
+
     // Normalize lon to 0-360
     let lonNorm = lon
     while (lonNorm < 0) lonNorm += 360
@@ -44,11 +62,17 @@ serve(async (req) => {
     const partNumber = Math.floor(latIdx / LATS_PER_PART) + 1
     const clampedPart = Math.min(partNumber, 5)
     const localLatIdx = latIdx % LATS_PER_PART
+    if (clampedPart < 1 || clampedPart > 5 || localLatIdx < 0 || localLatIdx >= LATS_PER_PART) {
+      throw new Error('Computed atlas partition is out of bounds.')
+    }
 
     // 3. Calculate Byte Offset in the part file
     // offset = (local_y * NLON + x) * BYTES_PER_POINT
     const byteOffset = (localLatIdx * NLON + lonIdx) * BYTES_PER_POINT
     const byteEnd = byteOffset + BYTES_PER_POINT - 1
+    if (!Number.isSafeInteger(byteOffset) || byteOffset < 0 || byteEnd < byteOffset) {
+      throw new Error('Computed atlas byte range is invalid.')
+    }
 
     const fileName = `climatic_atlas_part${clampedPart}.bin`
 

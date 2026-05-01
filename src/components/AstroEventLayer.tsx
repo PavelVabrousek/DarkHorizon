@@ -17,6 +17,8 @@ interface LabelData {
   duration: string
 }
 
+type CenterlineGeometry = GeoJSON.LineString & { coordinates: [number, number][] }
+
 // ── C2: Module-scope helpers (previously recreated inside useEffect) ──────────
 
 /** Haversine great-circle distance in km between two WGS-84 points. */
@@ -41,6 +43,27 @@ function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = Math.round(seconds % 60)
   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function isGeoJsonGeometry(value: unknown): value is GeoJSON.Geometry {
+  return typeof value === 'object' && value !== null && 'type' in value
+}
+
+function isCenterlineGeometry(value: unknown): value is CenterlineGeometry {
+  return (
+    isGeoJsonGeometry(value) &&
+    value.type === 'LineString' &&
+    Array.isArray((value as GeoJSON.LineString).coordinates)
+  )
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -77,8 +100,8 @@ export default function AstroEventLayer({ eventId }: AstroEventLayerProps) {
         //     The DB stores these as JSON; we assert the expected GeoJSON type
         //     rather than escaping with `as any`.
         const data          = eventData as AstroEventRow
-        const pathGeom      = data.path_geometry      as GeoJSON.Geometry | null
-        const centerlineGeom = data.centerline_geometry as (GeoJSON.LineString & { coordinates: [number, number][] }) | null
+        const pathGeom = isGeoJsonGeometry(data.path_geometry) ? data.path_geometry : null
+        const centerlineGeom = isCenterlineGeometry(data.centerline_geometry) ? data.centerline_geometry : null
 
         const features: GeoJSON.Feature[] = []
 
@@ -208,8 +231,8 @@ export default function AstroEventLayer({ eventId }: AstroEventLayerProps) {
                 -1px  1px 0 rgba(255,255,255,0.9),
                  1px  1px 0 rgba(255,255,255,0.9);
             ">
-              <div>${label.time}</div>
-              ${label.duration ? `<div>${label.duration}</div>` : ''}
+              <div>${escapeHtml(label.time)}</div>
+              ${label.duration ? `<div>${escapeHtml(label.duration)}</div>` : ''}
             </div>
           `,
           iconSize:   [0, 0],

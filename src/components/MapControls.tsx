@@ -68,11 +68,18 @@ function CheckRow({ checked, onChange, label }: CheckRowProps) {
  * Street View and other external links live in ExternalActions.
  */
 export default function MapControls() {
-  const {
-    lpVisible,          setLpVisible,          lpOpacity,          setLpOpacity,
-    cloudVisible,       setCloudVisible,       cloudOpacity,       setCloudOpacity,
-    clearSkyVisible,    setClearSkyVisible,    clearSkyOpacity,    setClearSkyOpacity,
-  } = useMapSettings()
+  const lpVisible       = useMapSettings((s) => s.lpVisible)
+  const setLpVisible    = useMapSettings((s) => s.setLpVisible)
+  const lpOpacity       = useMapSettings((s) => s.lpOpacity)
+  const setLpOpacity    = useMapSettings((s) => s.setLpOpacity)
+  const cloudVisible    = useMapSettings((s) => s.cloudVisible)
+  const setCloudVisible = useMapSettings((s) => s.setCloudVisible)
+  const cloudOpacity    = useMapSettings((s) => s.cloudOpacity)
+  const setCloudOpacity = useMapSettings((s) => s.setCloudOpacity)
+  const clearSkyVisible = useMapSettings((s) => s.clearSkyVisible)
+  const setClearSkyVisible = useMapSettings((s) => s.setClearSkyVisible)
+  const clearSkyOpacity = useMapSettings((s) => s.clearSkyOpacity)
+  const setClearSkyOpacity = useMapSettings((s) => s.setClearSkyOpacity)
   const [open, setOpen] = useState(false)
 
   const lpPct       = Math.round(lpOpacity       * 100)

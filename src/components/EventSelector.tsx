@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useTimeStore } from '../store/timeStore'
 
+interface AstroEventMetadata {
+  ge_time_utc?: string | null
+  [key: string]: unknown
+}
+
 interface EventSelectorProps {
   onSelectEvent: (eventId: string | null) => void
   selectedEventId: string | null
@@ -12,10 +17,7 @@ interface AstroEventMeta {
   event_type: string
   label: string
   event_date: string
-  metadata: {
-    ge_time_utc?: string
-    [key: string]: any
-  }
+  metadata: AstroEventMetadata | null
 }
 
 function StarIcon() {

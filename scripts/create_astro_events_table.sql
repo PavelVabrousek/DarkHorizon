@@ -20,18 +20,18 @@ CREATE TABLE IF NOT EXISTS public.astro_events (
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.astro_events ENABLE ROW LEVEL SECURITY;
 
--- Allow public read access
-CREATE POLICY "Public read access for astro_events" 
-  ON public.astro_events FOR SELECT 
+-- Policy definitions are idempotent for repeatable local/project setup.
+DROP POLICY IF EXISTS "Public read access for astro_events" ON public.astro_events;
+DROP POLICY IF EXISTS "Allow inserts for anon" ON public.astro_events;
+DROP POLICY IF EXISTS "Allow updates for anon" ON public.astro_events;
+
+-- Allow public read access. Astronomical events are public reference data used by
+-- the frontend map overlay.
+CREATE POLICY "Public read access for astro_events"
+  ON public.astro_events FOR SELECT
   USING (true);
 
--- Allow anonymous inserts so our upload script can run
--- IMPORTANT: You may want to remove this policy after the upload is complete!
-CREATE POLICY "Allow inserts for anon" 
-  ON public.astro_events FOR INSERT 
-  WITH CHECK (true);
-
--- Allow anonymous updates in case we run the script multiple times (upsert)
-CREATE POLICY "Allow updates for anon" 
-  ON public.astro_events FOR UPDATE 
-  USING (true);
+-- SECURITY NOTE:
+-- Do not allow anonymous INSERT/UPDATE for production. Import/update event data
+-- from a trusted local script or CI job using the Supabase service-role key.
+-- The service-role key bypasses RLS and must never be exposed to browser code.

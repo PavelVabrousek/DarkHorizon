@@ -76,6 +76,18 @@ function SaveLocationIcon() {
   )
 }
 
+/** Nearest saved location — target pin icon */
+function NearestLocationIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0">
+      <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.1" opacity="0.75" />
+      <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M8 1.5V4 M8 12v2.5 M1.5 8H4 M12 8h2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="8" cy="8" r="0.8" fill="currentColor" />
+    </svg>
+  )
+}
+
 /** Yearly Cloud Stat — cloud icon */
 function CloudIcon() {
   return (
@@ -120,6 +132,7 @@ interface ExternalActionsProps {
   onAddCloudStat:  () => void
   onSaveLocation:  () => void
   onAddMeteogram:  () => void
+  onNearestLocation: () => void
 }
 
 /**
@@ -131,7 +144,7 @@ interface ExternalActionsProps {
  *  • Street View  — Google Maps Street View at exact centre (6 dp)
  *  • Clear Outside — weather/sky forecast at centre (2 dp)
  */
-export default function ExternalActions({ center, onAddCloudStat, onSaveLocation, onAddMeteogram }: ExternalActionsProps) {
+export default function ExternalActions({ center, onAddCloudStat, onSaveLocation, onAddMeteogram, onNearestLocation }: ExternalActionsProps) {
   const [open, setOpen] = useState(false)
 
   function openStreetView() {
@@ -199,6 +212,13 @@ export default function ExternalActions({ center, onAddCloudStat, onSaveLocation
           label="Save Location"
           onClick={onSaveLocation}
           title="Save current map centre as an observation site"
+        />
+
+        <ActionButton
+          icon={<NearestLocationIcon />}
+          label="Nearest Location"
+          onClick={onNearestLocation}
+          title="Center on the nearest saved observation site and open its details"
         />
 
         <hr className="border-night-700/50" />

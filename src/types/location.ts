@@ -47,3 +47,7 @@ export interface Location {
   updated_at: string
 }
 
+/** Lightweight projection used by the map marker layer. */
+export type LocationMarkerRow = Omit<Location, 'horizon_profile' | 'user_id'>
+
+

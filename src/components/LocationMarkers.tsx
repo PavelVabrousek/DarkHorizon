@@ -1,6 +1,8 @@
+import { useEffect, useMemo, useRef } from 'react'
 import { CircleMarker, Popup } from 'react-leaflet'
-import { useLocations } from '../hooks/useLocations'
-import type { Location } from '../types/location'
+import type L from 'leaflet'
+import { useLocations, type LocationBounds } from '../hooks/useLocations'
+import type { LocationMarkerRow } from '../types/location'
 import { BORTLE_TABLE } from '../utils/lpSampler'
 
 // ── Zoom-adaptive radius ──────────────────────────────────────────────────────
@@ -98,18 +100,28 @@ const BORTLE_LABEL: Record<number, string> = {
 // ── Single marker ─────────────────────────────────────────────────────────────
 
 interface LocationMarkerProps {
-  loc: Location
+  loc: LocationMarkerRow
   radius: number
+  shouldOpen: boolean
+  onOpened: () => void
   onOpenMeteogram: (lat: number, lng: number, name: string) => void
   onOpenCloudStat: (lat: number, lng: number, name: string) => void
   onOpenHorizon: (locationId: string, name: string) => void
 }
 
-function LocationMarker({ loc, radius, onOpenMeteogram, onOpenCloudStat, onOpenHorizon }: LocationMarkerProps) {
+function LocationMarker({ loc, radius, shouldOpen, onOpened, onOpenMeteogram, onOpenCloudStat, onOpenHorizon }: LocationMarkerProps) {
+  const markerRef = useRef<L.CircleMarker | null>(null)
   const { fill, stroke } = bortleToLpColor(loc.bortle_class)
+
+  useEffect(() => {
+    if (!shouldOpen) return
+    markerRef.current?.openPopup()
+    onOpened()
+  }, [shouldOpen, onOpened])
 
   return (
     <CircleMarker
+      ref={markerRef}
       center={[loc.latitude, loc.longitude]}
       radius={radius}
       pathOptions={{
@@ -200,6 +212,9 @@ interface LocationMarkersProps {
    *  doesn't need its own useMapEvents listener (which interfered with the
    *  LP overlay pane rendering). */
   zoom: number
+  viewportBounds: LocationBounds | null
+  openLocationId: string | null
+  onLocationOpened: () => void
   onOpenMeteogram: (lat: number, lng: number, name: string) => void
   onOpenCloudStat: (lat: number, lng: number, name: string) => void
   onOpenHorizon: (locationId: string, name: string) => void
@@ -211,8 +226,21 @@ interface LocationMarkersProps {
  * Marker radius scales with zoom so dots shrink at low zoom levels.
  * Must be placed inside a react-leaflet <MapContainer>.
  */
-export default function LocationMarkers({ zoom, onOpenMeteogram, onOpenCloudStat, onOpenHorizon }: LocationMarkersProps) {
-  const { data: locations, isLoading, isError } = useLocations()
+export default function LocationMarkers({ zoom, viewportBounds, openLocationId, onLocationOpened, onOpenMeteogram, onOpenCloudStat, onOpenHorizon }: LocationMarkersProps) {
+  const expandedBounds = useMemo<LocationBounds | null>(() => {
+    if (!viewportBounds) return null
+    // Small margin so markers near edges aren't popping in/out aggressively
+    const latPad = 0.3
+    const lngPad = 0.3
+    return {
+      south: Math.max(-90, viewportBounds.south - latPad),
+      north: Math.min(90, viewportBounds.north + latPad),
+      west: Math.max(-180, viewportBounds.west - lngPad),
+      east: Math.min(180, viewportBounds.east + lngPad),
+    }
+  }, [viewportBounds])
+
+  const { data: locations, isLoading, isError } = useLocations(expandedBounds)
 
   const radius = zoomToRadius(zoom)
 
@@ -225,6 +253,8 @@ export default function LocationMarkers({ zoom, onOpenMeteogram, onOpenCloudStat
           key={loc.id}
           loc={loc}
           radius={radius}
+          shouldOpen={loc.id === openLocationId}
+          onOpened={onLocationOpened}
           onOpenMeteogram={onOpenMeteogram}
           onOpenCloudStat={onOpenCloudStat}
           onOpenHorizon={onOpenHorizon}

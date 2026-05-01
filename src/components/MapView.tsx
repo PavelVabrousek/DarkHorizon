@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, ImageOverlay, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 import { useMapSettings } from '../store/mapSettings'
 import { useTimeStore } from '../store/timeStore'
+import { fetchNearestLocation, type LocationBounds } from '../hooks/useLocations'
 import MapControls from './MapControls'
 import ExternalActions from './ExternalActions'
 import SearchBar, { type SearchSelectPayload } from './SearchBar'
@@ -16,10 +17,11 @@ import { fetchElevation } from '../lib/openmeteo'
 import EventSelector from './EventSelector'
 import AstroEventLayer from './AstroEventLayer'
 import TimeController from './TimeController'
-import ClimaticProfileChart from './ClimaticProfileChart'
-import MeteogramChart from './MeteogramChart'
-import HorizonChart from './HorizonChart'
 import SaveLocationModal from './SaveLocationModal'
+
+const ClimaticProfileChart = lazy(() => import('./ClimaticProfileChart'))
+const MeteogramChart = lazy(() => import('./MeteogramChart'))
+const HorizonChart = lazy(() => import('./HorizonChart'))
 
 interface ActiveProfile {
   id: string
@@ -237,6 +239,14 @@ function formatCoord(lat: number, lng: number): string {
   )
 }
 
+function FloatingChartFallback() {
+  return (
+    <div className="pointer-events-none absolute left-4 bottom-4 z-[1001] rounded border border-night-700 bg-night-900/80 px-2 py-1 text-[10px] text-night-300">
+      Loading chart…
+    </div>
+  )
+}
+
 /**
  * Light-pollution ImageOverlay.
  * Lazy: the PNG is only requested from the server the first time the user
@@ -244,7 +254,8 @@ function formatCoord(lat: number, lng: number): string {
  * (the image stays cached in the browser).
  */
 function LpOverlay() {
-  const { lpVisible, lpOpacity } = useMapSettings()
+  const lpVisible = useMapSettings((s) => s.lpVisible)
+  const lpOpacity = useMapSettings((s) => s.lpOpacity)
   const [everShown, setEverShown] = useState(false)
 
   useEffect(() => {
@@ -291,8 +302,9 @@ function isoWeekNumber(ms: number): number {
  * The overlay updates instantly when the user scrolls the TimeController.
  */
 function ClearSkyOverlay() {
-  const { clearSkyVisible, clearSkyOpacity } = useMapSettings()
-  const { appTimeMs } = useTimeStore()
+  const clearSkyVisible = useMapSettings((s) => s.clearSkyVisible)
+  const clearSkyOpacity = useMapSettings((s) => s.clearSkyOpacity)
+  const appTimeMs = useTimeStore((s) => s.appTimeMs)
   const [everShown, setEverShown] = useState(false)
 
   useEffect(() => {
@@ -333,7 +345,8 @@ const RAINVIEWER_API   = 'https://api.rainviewer.com/public/weather-maps.json'
  * Auto-refresh: 5-min interval keeps the timestamp current while visible.
  */
 function CloudOverlay() {
-  const { cloudVisible, cloudOpacity } = useMapSettings()
+  const cloudVisible = useMapSettings((s) => s.cloudVisible)
+  const cloudOpacity = useMapSettings((s) => s.cloudOpacity)
   const [tileUrl,   setTileUrl]   = useState<string | null>(null)
   const [everShown, setEverShown] = useState(false)
 
@@ -362,11 +375,11 @@ function CloudOverlay() {
   }, [])
 
   useEffect(() => {
-    if (!everShown) return
+    if (!everShown || !cloudVisible) return
     fetchLatestTileUrl()
     const id = setInterval(fetchLatestTileUrl, CLOUD_REFRESH_MS)
     return () => clearInterval(id)
-  }, [everShown, fetchLatestTileUrl])
+  }, [everShown, cloudVisible, fetchLatestTileUrl])
 
   if (!everShown || !tileUrl) return null
 
@@ -391,6 +404,7 @@ export default function MapView() {
   const [center, setCenter] = useState({ lat: MAP_CENTER[0], lng: MAP_CENTER[1] })
 
   const mapRef = useRef<L.Map | null>(null)
+  const [viewportBounds, setViewportBounds] = useState<LocationBounds | null>(null)
 
   const [searchExpanded, setSearchExpanded] = useState(false)
   const searchCollapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -401,6 +415,7 @@ export default function MapView() {
   const [activeMeteograms,  setActiveMeteograms]  = useState<ActiveProfile[]>([])
   const [activeHorizons,    setActiveHorizons]    = useState<Array<{ id: string; name: string }>>([])
   const [showSaveModal,     setShowSaveModal]     = useState(false)
+  const [pendingOpenLocationId, setPendingOpenLocationId] = useState<string | null>(null)
 
   const addClimaticProfile = useCallback(() => {
     const id = `${center.lat.toFixed(3)}-${center.lng.toFixed(3)}`
@@ -445,7 +460,20 @@ export default function MapView() {
     setActiveHorizons(prev => prev.filter(h => h.id !== id))
   }, [])
 
-  const { satelliteMode, setSatelliteMode } = useMapSettings()
+  const satelliteMode = useMapSettings((s) => s.satelliteMode)
+  const setSatelliteMode = useMapSettings((s) => s.setSatelliteMode)
+
+  const updateViewportBounds = useCallback(() => {
+    const map = mapRef.current
+    if (!map) return
+    const b = map.getBounds()
+    setViewportBounds({
+      south: b.getSouth(),
+      west: b.getWest(),
+      north: b.getNorth(),
+      east: b.getEast(),
+    })
+  }, [])
 
   const handleZoomChange = useCallback((z: number) => {
     setZoom(z)
@@ -494,11 +522,24 @@ export default function MapView() {
     return cancelElevFetch
   }, [scheduleElevFetch, cancelElevFetch])
 
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const b = map.getBounds()
+    setViewportBounds({
+      south: b.getSouth(),
+      west: b.getWest(),
+      north: b.getNorth(),
+      east: b.getEast(),
+    })
+  }, [zoom])
+
   const handleCenterChange = useCallback((lat: number, lng: number) => {
     setCenter({ lat, lng })
+    updateViewportBounds()
     scheduleElevFetch(lat, lng)
     sampleLpAt(lat, lng).then(setLpIndex)
-  }, [scheduleElevFetch])
+  }, [scheduleElevFetch, updateViewportBounds])
 
   const handleMoveStart = useCallback(() => {
     cancelElevFetch()
@@ -518,6 +559,23 @@ export default function MapView() {
     if (searchCollapseTimerRef.current) clearTimeout(searchCollapseTimerRef.current)
     searchCollapseTimerRef.current = setTimeout(() => setSearchExpanded(false), 10_000)
   }, [zoom])
+
+  const handleNearestLocation = useCallback(async () => {
+    const map = mapRef.current
+    if (!map) return
+    try {
+      const nearest = await fetchNearestLocation(center.lat, center.lng)
+      if (!nearest) {
+        console.warn('No saved locations found.')
+        return
+      }
+
+      setPendingOpenLocationId(nearest.id)
+      map.flyTo([nearest.latitude, nearest.longitude], Math.max(zoom, 13), { duration: 1.0 })
+    } catch (err) {
+      console.warn('Could not find nearest location:', err)
+    }
+  }, [center.lat, center.lng, zoom])
 
   // ── Derived display flags ────────────────────────────────────────────────────
 
@@ -593,6 +651,9 @@ export default function MapView() {
         {/* ── Observation sites fetched from Supabase ── */}
         <LocationMarkers
           zoom={zoom}
+          viewportBounds={viewportBounds}
+          openLocationId={pendingOpenLocationId}
+          onLocationOpened={() => setPendingOpenLocationId(null)}
           onOpenMeteogram={addMeteogramAt}
           onOpenCloudStat={addClimaticProfileAt}
           onOpenHorizon={addHorizonFor}
@@ -747,6 +808,7 @@ export default function MapView() {
             onAddCloudStat={addClimaticProfile}
             onSaveLocation={() => setShowSaveModal(true)}
             onAddMeteogram={addMeteogram}
+            onNearestLocation={handleNearestLocation}
           />
           <MapControls />
         </div>
@@ -755,42 +817,48 @@ export default function MapView() {
 
       {/* ── Yearly Cloud Stat Charts (Persistent Multi-Window) ── */}
       <div className="pointer-events-none absolute inset-0 z-[1001]">
-        {activeProfiles.map((p, idx) => (
-          <ClimaticProfileChart
-            key={p.id}
-            lat={p.lat}
-            lon={p.lng}
-            locationName={p.name}
-            initialOffset={{ x: 0, y: idx * 20 }}
-            onClose={() => removeClimaticProfile(p.id)}
-          />
-        ))}
+        <Suspense fallback={<FloatingChartFallback />}>
+          {activeProfiles.map((p, idx) => (
+            <ClimaticProfileChart
+              key={p.id}
+              lat={p.lat}
+              lon={p.lng}
+              locationName={p.name}
+              initialOffset={{ x: 0, y: idx * 20 }}
+              onClose={() => removeClimaticProfile(p.id)}
+            />
+          ))}
+        </Suspense>
       </div>
 
       {/* ── Meteogram Windows (Persistent Multi-Window) ── */}
       <div className="pointer-events-none absolute inset-0 z-[1001]">
-        {activeMeteograms.map((m, idx) => (
-          <MeteogramChart
-            key={m.id}
-            lat={m.lat}
-            lon={m.lng}
-            locationName={m.name}
-            initialOffset={{ x: 0, y: idx * 30 }}
-            onClose={() => removeMeteogram(m.id)}
-          />
-        ))}
+        <Suspense fallback={<FloatingChartFallback />}>
+          {activeMeteograms.map((m, idx) => (
+            <MeteogramChart
+              key={m.id}
+              lat={m.lat}
+              lon={m.lng}
+              locationName={m.name}
+              initialOffset={{ x: 0, y: idx * 30 }}
+              onClose={() => removeMeteogram(m.id)}
+            />
+          ))}
+        </Suspense>
       </div>
 
       {/* ── Horizon Windows (Persistent Multi-Window) ── */}
       <div className="pointer-events-none absolute inset-0 z-[1001]">
-        {activeHorizons.map((h) => (
-          <HorizonChart
-            key={h.id}
-            locationId={h.id}
-            name={h.name}
-            onClose={() => removeHorizon(h.id)}
-          />
-        ))}
+        <Suspense fallback={<FloatingChartFallback />}>
+          {activeHorizons.map((h) => (
+            <HorizonChart
+              key={h.id}
+              locationId={h.id}
+              name={h.name}
+              onClose={() => removeHorizon(h.id)}
+            />
+          ))}
+        </Suspense>
       </div>
 
       {/* ── Save Location Modal ── */}

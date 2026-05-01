@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
+import type { Database } from '../types/database'
 import type { LpSample } from '../utils/lpSampler'
+
+type LocationInsert = Database['public']['Tables']['locations']['Insert']
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -61,10 +64,7 @@ export default function SaveLocationModal({
     setLoading(true)
     setError(null)
 
-    // The Database type is hand-written (not generated), so the SDK's strict
-    // Insert generic resolves to `never`. We cast to `unknown` first to
-    // satisfy TypeScript while keeping the object structure explicit.
-    const payload = {
+    const payload: LocationInsert = {
       name:            name.trim(),
       description:     description.trim() || null,
       latitude:        lat,
@@ -77,7 +77,7 @@ export default function SaveLocationModal({
     }
     const { error: dbError } = await supabase
       .from('locations')
-      .insert(payload as unknown as never)
+      .insert(payload)
 
     setLoading(false)
 
