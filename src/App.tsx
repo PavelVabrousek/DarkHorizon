@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/react"
 import MapView from './components/MapView'
 import { isSupabaseConfigured } from './lib/supabase'
 
@@ -33,6 +34,7 @@ export default function App() {
       <main className="flex-1 overflow-hidden">
         <MapView />
       </main>
+      <Analytics />
     </div>
   )
 }
